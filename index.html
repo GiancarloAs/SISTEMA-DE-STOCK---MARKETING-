@@ -688,8 +688,10 @@ function registroRows() {
     const st = A.storeById[s.store_id];
     return st && (!A.filters.city || st.city_id == A.filters.city) && (!A.filters.onlyLatest || A.latest[s.store_id]?.id === s.id);
   }).map(s => {
-    const st = A.storeById[s.store_id], it = A.subItems[s.id] || {}, v = Object.values(it);
-    return {s, st, city: A.cityById[st.city_id]?.name, tiene: v.filter(x => x === 'tiene').length, no: v.filter(x => x === 'no_tiene').length, det: v.filter(x => x === 'deteriorado').length};
+    const st = A.storeById[s.store_id], it = A.subItems[s.id] || {};
+    const g = {}; GRUPOS.forEach(k => g[k] = {tiene: 0, no_tiene: 0, deteriorado: 0});
+    Object.entries(it).forEach(([iid, v]) => { const grp = A.catById[A.itemById[iid]?.category_id]?.grupo; if (grp && g[grp]) g[grp][v]++; });
+    return {s, st, city: A.cityById[st.city_id]?.name, g};
   });
 }
 function vRegistros() {
@@ -699,11 +701,14 @@ function vRegistros() {
   <div class="toolbar"><h2>Registros de llenado</h2>${filtersBar({cat: false})}
     <label class="row small" style="gap:6px;font-weight:600"><input type="checkbox" data-f="onlyLatest" ${A.filters.onlyLatest ? 'checked' : ''}> Solo el último de cada tienda</label>
     <button class="btn sm right" data-x="registros">⬇ Excel</button></div>
-  <div class="tbl-wrap"><table class="t"><thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Tienda</th><th>Ciudad</th><th class="num">Tiene</th><th class="num">No tiene</th><th class="num">Deteriorado</th><th>Observación</th><th></th></tr></thead><tbody>
+  <div class="tbl-wrap"><table class="t"><thead>
+    <tr><th colspan="5" style="top:0"></th>${GRUPOS.map(g => `<th colspan="3" class="num" style="text-align:center;background:var(--navy);color:#fff;border-left:3px solid #fff;top:0">${g}</th>`).join('')}<th colspan="2" style="top:0"></th></tr>
+    <tr><th style="top:31px">Fecha</th><th style="top:31px">Hora</th><th style="top:31px">Código</th><th style="top:31px">Tienda</th><th style="top:31px">Ciudad</th>${GRUPOS.map(() => `<th class="num" style="top:31px;border-left:3px solid var(--line)">Tiene</th><th class="num" style="top:31px">No tiene</th><th class="num" style="top:31px">Deterior.</th>`).join('')}<th style="top:31px">Observación</th><th style="top:31px"></th></tr></thead><tbody>
   ${rows.map(r => `<tr><td>${fmtDate(r.s.submitted_at)}</td><td>${fmtTime(r.s.submitted_at)}</td><td><span class="chip navy">${esc(r.st.code)}</span></td>
     <td>${esc(r.st.name)} ${A.latest[r.st.id]?.id === r.s.id ? '<span class="chip ok">vigente</span>' : ''} ${r.s.source === 'importado' ? '<span class="chip">Excel</span>' : ''}</td><td>${esc(r.city)}</td>
-    <td class="num">${r.tiene}</td><td class="num" style="color:var(--bad)">${r.no}</td><td class="num" style="color:var(--warn)">${r.det}</td><td class="small">${esc(r.s.notes || '')}</td>
-    <td><button class="btn ghost xs" data-sub="${r.s.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="10" class="empty">Sin registros en este mes</td></tr>'}
+    ${GRUPOS.map(g => `<td class="num" style="border-left:3px solid var(--line)">${r.g[g].tiene}</td><td class="num" style="color:var(--bad)">${r.g[g].no_tiene}</td><td class="num" style="color:var(--warn)">${r.g[g].deteriorado}</td>`).join('')}
+    <td class="small">${esc(r.s.notes || '')}</td>
+    <td><button class="btn ghost xs" data-sub="${r.s.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="13" class="empty">Sin registros en este mes</td></tr>'}
   </tbody></table></div>
   ${pend.length ? `<div class="card" style="margin-top:14px"><b>No han enviado en ${esc(periodLabel(A.period).toLowerCase())}:</b> <span class="small">${pend.map(s => `${esc(s.code)} ${esc(s.name)}`).join(' · ')}</span></div>` : ''}`;
 }
@@ -1065,8 +1070,10 @@ async function imgToPng(url) {
 }
 
 function addRegistros(wb) {
-  const rows = registroRows().map(r => [fmtDate(r.s.submitted_at), fmtTime(r.s.submitted_at), r.st.code, r.st.name, r.city, r.tiene, r.no, r.det, A.latest[r.st.id]?.id === r.s.id ? 'Sí' : 'No', r.s.source === 'importado' ? 'Excel' : 'Tienda', r.s.notes || '']);
-  xlSheet(wb, 'Registros', 'Registro de llenado por tienda', ['Fecha', 'Hora', 'Código', 'Tienda', 'Ciudad', 'Tiene', 'No tiene', 'Deteriorado', 'Vigente', 'Origen', 'Observación'], rows, [12, 8, 10, 28, 12, 8, 10, 12, 9, 9, 40]);
+  const rows = registroRows().map(r => [fmtDate(r.s.submitted_at), fmtTime(r.s.submitted_at), r.st.code, r.st.name, r.city,
+    ...GRUPOS.flatMap(g => [r.g[g].tiene, r.g[g].no_tiene, r.g[g].deteriorado]), A.latest[r.st.id]?.id === r.s.id ? 'Sí' : 'No', r.s.source === 'importado' ? 'Excel' : 'Tienda', r.s.notes || '']);
+  xlSheet(wb, 'Registros', 'Registro de llenado por tienda', ['Fecha', 'Hora', 'Código', 'Tienda', 'Ciudad',
+    ...GRUPOS.flatMap(g => [`${g} · Tiene`, `${g} · No tiene`, `${g} · Deteriorado`]), 'Vigente', 'Origen', 'Observación'], rows, [12, 8, 10, 28, 12, 11, 11, 13, 14, 14, 16, 9, 9, 40]);
   const pend = A.stores.filter(s => s.active && !A.latest[s.id]).map(s => [s.code, s.name, A.cityById[s.city_id]?.name]);
   xlSheet(wb, 'Pendientes', 'Tiendas que no enviaron', ['Código', 'Tienda', 'Ciudad'], pend, [10, 30, 14]);
 }
