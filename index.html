@@ -119,6 +119,25 @@ label.f .req{color:var(--bad)}
 .ans button[data-s=no_tiene].on{background:var(--bad);border-color:var(--bad);color:#fff}
 .ans button[data-s=deteriorado].on{background:var(--warn);border-color:var(--warn);color:#fff}
 .ans button.on .dot{background:#fff!important;color:var(--ink)}
+.navbar{position:sticky;top:58px;z-index:20;background:rgba(243,244,249,.96);backdrop-filter:blur(8px);margin:-18px -18px 8px;padding:10px 18px 8px;border-bottom:1px solid var(--line)}
+.cat-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.cat-tabs::-webkit-scrollbar{display:none}
+.cat-tabs button{flex:none;border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap}
+.cat-tabs button small{color:var(--muted);font-weight:600;margin-left:3px}
+.cat-tabs button .ck{color:var(--ok);margin-right:4px;font-weight:800}
+.cat-tabs button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.cat-tabs button.on small,.cat-tabs button.on .ck{color:var(--yellow)}
+.cat-tabs button.send{border-color:var(--amber);color:var(--navy-2)}
+.cat-tabs button.send.on{background:var(--amber);border-color:var(--amber);color:var(--navy-2)}
+.steps{display:grid;gap:10px}
+.step-card{display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--line);border-radius:var(--r);padding:12px 14px;box-shadow:var(--sh);width:100%;transition:.15s}
+.step-card:hover{border-color:var(--navy)}
+.step-n{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--navy-soft);color:var(--navy);flex:none}
+.step-n.ok{background:var(--ok);color:#fff}
+.step-n.warn{background:var(--amber);color:var(--navy-2)}
+.step-card .thumbs{display:flex}
+.step-card .thumbs img{width:30px;height:40px;object-fit:cover;border-radius:5px;border:2px solid #fff;margin-left:-8px;background:#eef0f7;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+@media(max-width:480px){.step-card .thumbs{display:none}}
 .send-bar{position:sticky;bottom:0;z-index:20;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(20,25,60,.06);margin:24px -18px -18px;padding:12px 18px calc(12px + env(safe-area-inset-bottom))}
 .send-bar .in{max-width:1280px;margin:0 auto;display:flex;gap:12px;align-items:center}
 
@@ -424,57 +443,116 @@ async function initStore() {
   ST.answers = d.answers || {}; ST.notes = d.notes || '';
   // solo respuestas de artículos que siguen activos
   Object.keys(ST.answers).forEach(k => { if (!ST.items.find(i => i.id == k)) delete ST.answers[k]; });
+  ST.step = 'home';
   $('#stName').textContent = st.name;
   $('#stMeta').textContent = `${st.code} · ${st.cities?.name || ''}`;
   show('storeView');
   renderStore();
 }
 
-function renderStore() {
-  const last = ST.subs.find(s => s.period === ST.period);
-  const total = ST.items.length;
-  const done = ST.items.filter(i => ST.answers[i.id]).length;
-  const byCat = id => ST.items.filter(i => i.category_id === id);
-  const enCamino = ST.items.filter(i => ST.ships[i.id]).length;
+/* Pasos: 'home' → una categoría a la vez → 'resumen' */
+function storeSteps() {
+  const out = [];
+  for (const g of GRUPOS) ST.cats.filter(c => c.grupo === g).forEach(c => {
+    const its = ST.items.filter(i => i.category_id === c.id);
+    if (its.length) out.push({cat: c, items: its, done: its.filter(i => ST.answers[i.id]).length});
+  });
+  return out;
+}
+function navBar(steps, current) {
+  const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
+  return `<div class="navbar"><div class="cat-tabs">
+    <button data-step="home" class="${current === 'home' ? 'on' : ''}">☰ Inicio</button>
+    ${steps.map(s => { const full = s.done === s.items.length;
+      return `<button data-step="${s.cat.id}" class="${current === s.cat.id ? 'on' : ''}">${full ? '<span class="ck">✓</span>' : ''}${esc(s.cat.name)} <small>${s.done}/${s.items.length}</small></button>`; }).join('')}
+    <button data-step="resumen" class="send ${current === 'resumen' ? 'on' : ''}">Enviar ➜</button></div>
+    <div class="pbar" style="height:5px;margin-top:8px"><i style="width:${total ? done / total * 100 : 0}%"></i></div>
+    <div class="small muted" style="margin-top:4px"><b>${done} de ${total}</b> revisados${total - done ? ` · faltan ${total - done}` : ' · ¡todo listo!'}</div></div>`;
+}
+function goStep(step) { ST.step = step; renderStore(); window.scrollTo({top: 0}); $('.cat-tabs .on')?.scrollIntoView({inline: 'center', block: 'nearest'}); }
 
+function renderStore() {
+  const steps = storeSteps();
+  const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
+  const progress = `<div class="progress"><div class="row small" style="margin-bottom:6px"><b>${done} de ${total} revisados</b><span class="right muted">${total - done ? `Faltan ${total - done}` : '¡Todo revisado!'}</span></div>
+    <div class="pbar"><i style="width:${total ? done / total * 100 : 0}%"></i></div></div>`;
+  const idx = steps.findIndex(s => s.cat.id === ST.step);
+  if (idx >= 0) return renderStoreCategory(steps, idx, progress);
+  if (ST.step === 'resumen') return renderStoreResumen(steps, progress);
+  ST.step = 'home';
+
+  const last = ST.subs.find(s => s.period === ST.period);
+  const enCamino = ST.items.filter(i => ST.ships[i.id]).length;
+  const next = steps.find(s => s.done < s.items.length);
   let html = `
-  <div class="store-hero">
-    <div><h2>Control de ${esc(periodLabel(ST.period).toLowerCase())}</h2>
-    <div class="muted small">Revisa cada pieza en tu tienda y marca si la tienen, si falta o si está deteriorada.</div></div>
-  </div>
+  <div class="store-hero"><div><h2>Control de ${esc(periodLabel(ST.period).toLowerCase())}</h2>
+    <div class="muted small">Elige una categoría y marca cada pieza: la tienen, falta o está deteriorada. Puedes ir en el orden que quieras.</div></div></div>
   ${last && last.source !== 'importado'
     ? `<div class="status-banner ok"><b style="font-size:20px">✓</b><div>Ya enviaste el control de este mes el <b>${fmtDate(last.submitted_at)}</b> a las <b>${fmtTime(last.submitted_at)}</b>.<br><span class="small">Si algo cambió, puedes volver a enviarlo; Marketing verá la versión más reciente.</span></div></div>`
     : `<div class="status-banner pending"><b style="font-size:20px">!</b><div>Aún no envías el control de <b>${esc(periodLabel(ST.period).toLowerCase())}</b>.${last ? '<br><span class="small">Marketing cargó tu último estado desde el Excel. Revísalo y envía tu control actualizado.</span>' : ''}</div></div>`}
-  ${ST.prev && !done ? `<div class="row" style="margin-bottom:12px"><button class="btn ghost sm" id="stPrev">↺ Cargar mis respuestas anteriores (${fmtDate(ST.prev.at)})</button><span class="small muted">Luego corrige solo lo que cambió.</span></div>` : ''}
   ${enCamino ? `<div class="status-banner" style="background:var(--ship-soft);color:#1d4aa5"><b style="font-size:18px">➜</b><div>Marketing te envió <b>${enCamino}</b> pieza(s) que están <b>en camino</b>. Cuando lleguen, márcalas como "Lo tenemos".</div></div>` : ''}
-  <div class="progress"><div class="row small" style="margin-bottom:6px"><b>${done} de ${total} revisados</b><span class="right muted">${total - done ? `Faltan ${total - done}` : '¡Listo para enviar!'}</span></div>
-    <div class="pbar"><i style="width:${total ? done / total * 100 : 0}%"></i></div></div>`;
+  ${progress}
+  ${ST.prev && !done ? `<div class="row" style="margin:4px 0 14px"><button class="btn ghost sm" id="stPrev">↺ Cargar mis respuestas anteriores (${fmtDate(ST.prev.at)})</button><span class="small muted">Luego corrige solo lo que cambió.</span></div>` : ''}
+  <div class="steps">${steps.map((s, k) => {
+    const st = s.done === s.items.length ? 'ok' : s.done ? 'warn' : '';
+    return `<button class="step-card" data-step="${s.cat.id}">
+      <span class="step-n ${st}">${st === 'ok' ? '✓' : k + 1}</span>
+      <span class="grow" style="text-align:left"><span class="small muted" style="letter-spacing:.08em;font-weight:700">${esc(s.cat.grupo)}</span><br><b>${esc(s.cat.name)}</b></span>
+      <span class="thumbs">${s.items.slice(0, 3).map(i => `<img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy">`).join('')}</span>
+      <span class="chip ${st}">${s.done}/${s.items.length}</span><span class="muted" style="font-size:20px">›</span></button>`; }).join('')}
+    ${steps.length ? `<button class="step-card" data-step="resumen" ${done === total ? '' : 'style="opacity:.55"'}><span class="step-n">${steps.length + 1}</span><span class="grow" style="text-align:left"><span class="small muted" style="letter-spacing:.08em;font-weight:700">FINAL</span><br><b>Revisar y enviar</b></span><span class="muted" style="font-size:20px">›</span></button>` : ''}
+  </div>
+  ${!total ? `<div class="card empty">Todavía no hay artículos cargados. Marketing los agregará pronto.</div>` : ''}
+  ${ST.subs.length ? `<div class="card" style="margin-top:14px"><b>Mis últimos envíos</b><div class="small muted" style="margin-top:6px">${ST.subs.map(s => `${fmtDate(s.submitted_at)} · ${fmtTime(s.submitted_at)}${s.source === 'importado' ? ' (importado del Excel)' : ''}`).join('<br>')}</div></div>` : ''}
+  ${total ? `<div class="send-bar"><div class="in"><div class="small grow">${done === total ? '<b style="color:var(--ok)">Todo revisado ✓</b>' : `<b>${total - done}</b> por revisar`}</div>
+    <button class="btn amber" data-step="${next ? next.cat.id : 'resumen'}">${next ? (done ? 'Continuar →' : 'Empezar →') : 'Revisar y enviar →'}</button></div></div>` : ''}`;
+  $('#storeMain').innerHTML = html;
+}
 
-  for (const g of GRUPOS) {
-    const cats = ST.cats.filter(c => c.grupo === g && byCat(c.id).length);
-    if (!cats.length) continue;
-    html += `<div class="grp-title">${g}</div>`;
-    for (const c of cats) {
-      const its = byCat(c.id);
-      html += `<div class="cat-title">${esc(c.name)} <span class="chip">${its.filter(i => ST.answers[i.id]).length}/${its.length}</span></div><div class="items-grid">`;
-      for (const it of its) html += itemCard(it);
-      html += `</div>`;
-    }
-  }
-  if (!total) html += `<div class="card empty">Todavía no hay artículos cargados. Marketing los agregará pronto.</div>`;
+function renderStoreCategory(steps, idx, progress) {
+  const s = steps[idx], left = s.items.length - s.done, nextStep = steps[idx + 1];
+  $('#storeMain').innerHTML = `
+  ${navBar(steps, s.cat.id)}
+  <div class="small muted" style="letter-spacing:.1em;font-weight:700;margin-top:6px">${esc(s.cat.grupo)} · ${idx + 1} de ${steps.length}</div>
+  <h2 style="margin:0 0 4px">${esc(s.cat.name)}</h2>
+  <div class="muted small" style="margin-bottom:12px">${s.items.length} pieza(s). Toca la foto para verla en grande. Puedes saltar a otra categoría cuando quieras arriba.</div>
+  <div class="items-grid">${s.items.map(itemCard).join('')}</div>
+  <div class="send-bar"><div class="in">
+    <button class="btn ghost sm" data-step="${idx ? steps[idx - 1].cat.id : 'home'}">← Anterior</button>
+    <div class="small grow" style="text-align:center">${left ? `Faltan <b>${left}</b> aquí` : '<b style="color:var(--ok)">Completa ✓</b>'}</div>
+    <button class="btn amber" data-step="${nextStep ? nextStep.cat.id : 'resumen'}">${nextStep ? 'Siguiente →' : 'Revisar y enviar →'}</button>
+  </div></div>`;
+}
 
-  html += `
-  <div class="card" style="margin-top:22px">
+function renderStoreResumen(steps, progress) {
+  const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
+  const pend = steps.find(s => s.done < s.items.length);
+  const c = st => ST.items.filter(i => ST.answers[i.id] === st).length;
+  const issues = ST.items.filter(i => ST.answers[i.id] === 'no_tiene' || ST.answers[i.id] === 'deteriorado');
+  $('#storeMain').innerHTML = `
+  ${navBar(steps, 'resumen')}
+  <h2 style="margin:6px 0 10px">Revisar y enviar</h2>
+  ${steps.filter(x => x.done < x.items.length).map(x => `<div class="status-banner pending"><b>!</b><div>Te falta terminar <b>${esc(x.cat.name)}</b> (${x.done}/${x.items.length}). <a href="#" data-step="${x.cat.id}">Completar ahora</a></div></div>`).join('')}
+  <div class="sum3"><div class="c-tiene"><b>${c('tiene')}</b>Lo tenemos</div><div class="c-no_tiene"><b>${c('no_tiene')}</b>No lo tenemos</div><div class="c-deteriorado"><b>${c('deteriorado')}</b>Deteriorado</div></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--line)"><b>Por categoría</b></div>
+    ${steps.map(s => { const n = st => s.items.filter(i => ST.answers[i.id] === st).length;
+      return `<div class="need-row"><div class="grow"><b>${esc(s.cat.name)}</b><div class="small muted">${esc(s.cat.grupo)}</div></div>
+        <span class="chip ok">✓ ${n('tiene')}</span><span class="chip bad">✕ ${n('no_tiene')}</span><span class="chip warn">! ${n('deteriorado')}</span>
+        <button class="btn ghost xs" data-step="${s.cat.id}">Editar</button></div>`; }).join('')}
+  </div>
+  ${issues.length ? `<div class="card" style="padding:0;overflow:hidden;margin-top:14px">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--line)"><b>Lo que reportas como faltante o deteriorado</b><div class="small muted">Confirma que esté bien antes de enviar.</div></div>
+    ${issues.map(i => `<div class="need-row"><img class="thumb" src="${esc(photoUrl(i.thumb_path))}" alt=""><div class="grow">${esc(i.name)}<div class="small muted">${esc(ST.cats.find(c => c.id === i.category_id)?.name || '')}</div></div><span class="chip ${STATUS[ST.answers[i.id]].cls}">${STATUS[ST.answers[i.id]].short}</span></div>`).join('')}
+  </div>` : ''}
+  <div class="card" style="margin-top:14px">
     <label class="f" for="stNotes">Observaciones (opcional)</label>
     <textarea id="stNotes" class="inp" rows="3" placeholder="Ej. faltan bases de acrílico, el afiche de la vitrina está despegado…">${esc(ST.notes)}</textarea>
   </div>
-  ${ST.subs.length ? `<div class="card" style="margin-top:14px"><b>Mis últimos envíos</b><div class="small muted" style="margin-top:6px">${ST.subs.map(s => `${fmtDate(s.submitted_at)} · ${fmtTime(s.submitted_at)}${s.source === 'importado' ? ' (importado del Excel)' : ''}`).join('<br>')}</div></div>` : ''}
   <div class="send-bar"><div class="in">
-    <div class="small grow">${done === total && total ? '<b style="color:var(--ok)">Todo revisado ✓</b>' : `<b>${total - done}</b> por revisar`}</div>
-    <button class="btn ghost sm" id="stJump" ${done === total ? 'disabled' : ''}>Ir al siguiente</button>
+    <div class="small grow">${done === total ? '<b style="color:var(--ok)">Todo revisado ✓</b>' : `Faltan <b>${total - done}</b> por revisar`}</div>
     <button class="btn amber" id="stSend" ${done === total && total ? '' : 'disabled'}>Guardar y enviar</button>
   </div></div>`;
-  $('#storeMain').innerHTML = html;
 }
 
 function itemCard(it) {
@@ -499,18 +577,17 @@ document.addEventListener('click', e => {
   if (!ST.store || $('#storeView').classList.contains('hidden')) return;
   const b = e.target.closest('.ans button');
   if (b) {
-    const id = b.dataset.item;
+    const id = b.dataset.item, left = () => ST.items.filter(i => i.category_id == ST.step && !ST.answers[i.id]).length;
+    const before = left();
     ST.answers[id] = b.dataset.s; saveDraft();
     const y = window.scrollY; renderStore(); window.scrollTo(0, y);
+    if (before > 0 && left() === 0) toast('Categoría completa ✓ Toca "Siguiente".', 'ok');
     return;
   }
+  const stp = e.target.closest('[data-step]');
+  if (stp && !stp.disabled) { e.preventDefault(); const v = stp.dataset.step; return goStep(/^\d+$/.test(v) ? +v : v); }
   const z = e.target.closest('[data-zoom]');
   if (z) { const it = ST.items.find(i => i.id == z.dataset.zoom); if (it?.photo_path) lightbox(photoUrl(it.photo_path), it.name); return; }
-  if (e.target.closest('#stJump')) {
-    const next = ST.items.find(i => !ST.answers[i.id]);
-    if (next) $('#it-' + next.id).scrollIntoView({behavior: 'smooth', block: 'center'});
-    return;
-  }
   if (e.target.closest('#stSend')) sendChecklist();
   if (e.target.closest('#stPrev')) {
     ST.items.forEach(i => { if (!ST.answers[i.id] && ST.prev.answers[i.id]) ST.answers[i.id] = ST.prev.answers[i.id]; });
