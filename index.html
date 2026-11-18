@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Noraves · Control de Artes y Materiales</title>
+<meta name="theme-color" content="#23308a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2323308a'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='900' font-size='34' fill='%23f6a71c' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --navy:#23308a; --navy-2:#18215f; --navy-soft:#e8eaf7;
+  --amber:#f6a71c; --amber-soft:#fff4dc;
+  --bg:#f3f4f9; --card:#fff; --ink:#1b1f3b; --muted:#6b7090; --line:#e2e4ef;
+  --ok:#17914f; --ok-soft:#e3f6ec; --bad:#d63b3b; --bad-soft:#fdeaea;
+  --warn:#d98200; --warn-soft:#fff1d9; --ship:#2f68d8; --ship-soft:#e6eefd;
+  --none:#9aa0b8; --none-soft:#f0f1f6;
+  --r:14px; --sh:0 1px 2px rgba(20,25,60,.06),0 6px 20px rgba(20,25,60,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Poppins,system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--navy)}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grow{flex:1}
+.right{margin-left:auto}
+
+/* ---------- botones / inputs ---------- */
+.btn{border:0;border-radius:10px;padding:10px 16px;font-weight:600;background:var(--navy);color:#fff;display:inline-flex;gap:8px;align-items:center;justify-content:center;transition:.15s;white-space:nowrap}
+.btn:hover{background:var(--navy-2)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.amber{background:var(--amber);color:var(--navy-2)}
+.btn.amber:hover{background:#e99a0c}
+.btn.ghost{background:transparent;color:var(--navy);border:1.5px solid var(--line)}
+.btn.ghost:hover{background:var(--navy-soft);border-color:var(--navy-soft)}
+.btn.danger{background:var(--bad)}
+.btn.ok{background:var(--ok)}
+.btn.sm{padding:6px 11px;font-size:13px;border-radius:8px}
+.btn.xs{padding:3px 8px;font-size:12px;border-radius:7px}
+.inp{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;outline:none;transition:.15s}
+.inp:focus{border-color:var(--navy);box-shadow:0 0 0 3px var(--navy-soft)}
+select.inp{padding-right:30px}
+label.f{display:block;font-size:13px;font-weight:600;margin:0 0 5px}
+label.f .req{color:var(--bad)}
+.field{margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;background:var(--none-soft);color:var(--muted);white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.ship{background:var(--ship-soft);color:var(--ship)}
+.chip.navy{background:var(--navy-soft);color:var(--navy)}
+.chip.amber{background:var(--amber-soft);color:#9a5d00}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:18px}
+.seg{display:inline-flex;background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;border-radius:8px;padding:6px 12px;font-weight:600;font-size:13px;color:var(--muted)}
+.seg button.on{background:var(--navy);color:#fff}
+
+/* ---------- header ---------- */
+.top{background:var(--navy);color:#fff;position:sticky;top:0;z-index:30;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.top .in{max-width:1280px;margin:0 auto;padding:10px 18px;display:flex;align-items:center;gap:14px}
+.brand{font-weight:800;letter-spacing:.06em;font-size:20px;color:#fff}
+.brand small{display:block;font-size:10.5px;letter-spacing:.08em;font-weight:500;color:var(--amber);margin-top:-3px}
+.top .who{margin-left:auto;text-align:right;font-size:13px;line-height:1.25}
+.top .who b{display:block;font-size:14px}
+.top .btn.ghost{color:#fff;border-color:rgba(255,255,255,.25)}
+.top .btn.ghost:hover{background:rgba(255,255,255,.1)}
+.wrap{max-width:1280px;margin:0 auto;padding:18px}
+
+/* ---------- login ---------- */
+#login{min-height:100vh;display:grid;place-items:center;padding:20px;background:
+  radial-gradient(1200px 500px at 110% -10%,rgba(246,167,28,.35),transparent 60%),
+  linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 100%)}
+.login-card{width:100%;max-width:400px;background:#fff;border-radius:20px;padding:30px 28px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.login-card .brand{color:var(--navy);font-size:30px;text-align:center}
+.login-card .brand small{font-size:12px;color:var(--warn)}
+.login-card h1{font-size:16px;text-align:center;margin:14px 0 22px;font-weight:600;color:var(--muted)}
+.err{background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:12px}
+
+/* ---------- panel tienda ---------- */
+.store-hero{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.store-hero h2{margin:0;font-size:22px}
+.status-banner{border-radius:var(--r);padding:12px 16px;display:flex;gap:12px;align-items:center;margin-bottom:16px;font-size:14px}
+.status-banner.ok{background:var(--ok-soft);color:#0f6a39}
+.status-banner.pending{background:var(--amber-soft);color:#7a4a00}
+.progress{position:sticky;top:58px;z-index:20;background:rgba(243,244,249,.94);backdrop-filter:blur(8px);padding:10px 0;margin-bottom:6px}
+.pbar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.pbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--amber),#f4c35a);border-radius:99px;transition:width .25s}
+.grp-title{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--navy);margin:26px 0 4px;display:flex;align-items:center;gap:10px}
+.grp-title:after{content:"";flex:1;height:2px;background:var(--navy-soft)}
+.cat-title{font-size:17px;font-weight:700;margin:12px 0 10px;display:flex;align-items:center;gap:10px}
+.items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;align-items:start}
+@media(max-width:480px){.items-grid{grid-template-columns:1fr 1fr;gap:10px}}
+.it{background:#fff;border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;border:2px solid transparent;transition:border-color .15s}
+.it.s-tiene{border-color:var(--ok)}
+.it.s-no_tiene{border-color:var(--bad)}
+.it.s-deteriorado{border-color:var(--warn)}
+.it .ph{position:relative;background:linear-gradient(135deg,#f6f7fb,#eceef6);display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+.it .ph img{width:100%;height:100%;object-fit:contain;display:block}
+.it .ph .noimg{color:var(--none);font-size:12px}
+.it .ph .badge{position:absolute;top:8px;left:8px}
+.it .body{padding:10px 11px 11px}
+.it .name{font-weight:600;font-size:14px;line-height:1.25;margin-bottom:8px;min-height:2.5em}
+.ans{display:grid;gap:5px}
+.ans button{border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:7px 8px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;color:var(--ink);transition:.12s;text-align:left}
+.ans button .dot{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;flex:none;color:#fff}
+.ans button[data-s=tiene] .dot{background:var(--ok)}
+.ans button[data-s=no_tiene] .dot{background:var(--bad)}
+.ans button[data-s=deteriorado] .dot{background:var(--warn)}
+.ans button[data-s=tiene].on{background:var(--ok);border-color:var(--ok);color:#fff}
+.ans button[data-s=no_tiene].on{background:var(--bad);border-color:var(--bad);color:#fff}
+.ans button[data-s=deteriorado].on{background:var(--warn);border-color:var(--warn);color:#fff}
+.ans button.on .dot{background:#fff!important;color:var(--ink)}
+.send-bar{position:sticky;bottom:0;z-index:20;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(20,25,60,.06);margin:24px -18px -18px;padding:12px 18px calc(12px + env(safe-area-inset-bottom))}
+.send-bar .in{max-width:1280px;margin:0 auto;display:flex;gap:12px;align-items:center}
+
+/* ---------- admin ---------- */
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;background:var(--navy-2)}
+.tabs .in{max-width:1280px;margin:0 auto;display:flex;gap:2px;padding:0 12px}
+.tabs button{background:transparent;border:0;color:rgba(255,255,255,.7);padding:11px 14px;font-weight:600;font-size:14px;border-bottom:3px solid transparent;white-space:nowrap}
+.tabs button.on{color:#fff;border-bottom-color:var(--amber)}
+.tabs button:hover{color:#fff}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.toolbar h2{margin:0 8px 0 0;font-size:20px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:#fff;border-radius:var(--r);box-shadow:var(--sh);padding:14px 16px}
+.kpi .v{font-size:28px;font-weight:800;line-height:1.1}
+.kpi .l{font-size:12.5px;color:var(--muted);font-weight:500}
+.kpi.ok .v{color:var(--ok)} .kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.ship .v{color:var(--ship)}
+.tbl-wrap{overflow:auto;background:#fff;border-radius:var(--r);box-shadow:var(--sh);max-height:70vh}
+table.t{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
+table.t th,table.t td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+table.t thead th{position:sticky;top:0;background:#f7f8fc;z-index:2;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;white-space:nowrap}
+table.t tbody tr:hover td{background:#fafbff}
+table.t td.num,table.t th.num{text-align:right;font-variant-numeric:tabular-nums}
+table.t tr.city td{background:var(--navy-soft);font-weight:700;color:var(--navy)}
+.thumb{width:38px;height:38px;object-fit:contain;border-radius:6px;background:#f2f3f8;flex:none}
+/* matriz */
+table.mx{font-size:12px}
+table.mx th.it-h{writing-mode:vertical-rl;transform:rotate(180deg);text-transform:none;letter-spacing:0;height:190px;padding:8px 4px;vertical-align:bottom;font-weight:600;color:var(--ink);font-size:11.5px;white-space:nowrap}
+table.mx th.it-h span{display:block;max-height:176px;overflow:hidden;text-overflow:ellipsis}
+table.mx th.cat-h{text-align:center;background:var(--navy);color:#fff;font-size:11px;top:0;border-left:2px solid #fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px}
+table.mx thead tr:nth-child(2) th{top:31px}
+table.mx thead tr:nth-child(3) th{top:221px}
+table.mx td.c{text-align:center;padding:5px 3px;min-width:30px;font-size:14px;font-weight:700}
+table.mx td.st,table.mx th.st{position:sticky;left:0;background:#fff;z-index:1;min-width:170px}
+table.mx thead th.st{z-index:3;background:#f7f8fc}
+.c-tiene{color:var(--ok);background:var(--ok-soft)}
+.c-no_tiene{color:var(--bad);background:var(--bad-soft)}
+.c-deteriorado{color:var(--warn);background:var(--warn-soft)}
+.c-en_camino{color:var(--ship);background:var(--ship-soft)}
+.c-sin_dato{color:var(--none)}
+.legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
+.store-block{background:#fff;border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:hidden}
+.store-block .hd{display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.store-block .hd h3{margin:0;font-size:16px}
+.need-row{display:flex;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--line)}
+.need-row:last-child{border-bottom:0}
+.need-row input[type=number]{width:62px;padding:5px 7px}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.cat-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.cat-item{display:flex;align-items:center;gap:8px;background:#fff;border-radius:12px;padding:10px 12px;box-shadow:var(--sh)}
+.cat-item.off{opacity:.5}
+
+/* ---------- modal / toast / lightbox ---------- */
+.ov{position:fixed;inset:0;background:rgba(15,20,50,.55);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:4vh 14px;overflow:auto;backdrop-filter:blur(2px)}
+.modal{background:#fff;border-radius:18px;width:100%;max-width:560px;box-shadow:0 30px 80px rgba(0,0,0,.35);animation:pop .16s ease-out}
+.modal.wide{max-width:860px}
+.modal .mh{padding:18px 22px 6px;display:flex;align-items:center;gap:10px}
+.modal .mh h3{margin:0;font-size:18px}
+.modal .mb{padding:10px 22px 6px}
+.modal .mf{padding:14px 22px 20px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+@keyframes pop{from{transform:translateY(8px) scale(.98);opacity:0}}
+.x{border:0;background:var(--none-soft);width:32px;height:32px;border-radius:50%;margin-left:auto;font-size:18px;line-height:1}
+#toasts{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:200;display:grid;gap:8px;width:min(92vw,420px)}
+.toast{background:var(--ink);color:#fff;border-radius:12px;padding:11px 16px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);animation:pop .2s}
+.toast.ok{background:var(--ok)} .toast.bad{background:var(--bad)}
+.lb{position:fixed;inset:0;background:rgba(10,12,30,.9);z-index:150;display:grid;place-items:center;padding:20px;cursor:zoom-out}
+.lb img{max-width:100%;max-height:90vh;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.lb .cap{position:fixed;bottom:16px;left:0;right:0;text-align:center;color:#fff;font-weight:600}
+.spin{width:38px;height:38px;border:4px solid var(--navy-soft);border-top-color:var(--navy);border-radius:50%;animation:sp 0.8s linear infinite;margin:60px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.photo-drop{border:2px dashed var(--line);border-radius:12px;padding:12px;display:flex;gap:14px;align-items:center;cursor:pointer;background:#fafbff}
+.photo-drop:hover{border-color:var(--navy)}
+.photo-drop img{width:90px;height:110px;object-fit:contain;background:#eef0f7;border-radius:8px}
+.hint{font-size:12px;color:var(--muted);margin-top:4px}
+.sum3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 14px}
+.sum3 div{border-radius:12px;padding:12px;text-align:center;font-weight:700}
+.sum3 div b{display:block;font-size:26px}
+@media print{.top,.tabs,.toolbar .btn,.send-bar{display:none!important}}
+</style>
+</head>
+<body>
+
+<!-- =============================== LOGIN =============================== -->
+<section id="login" class="hidden">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <div class="brand">NORAVES<small>MARKETING · CONTROL DE TIENDAS</small></div>
+    <h1>Control de artes y materiales</h1>
+    <div id="loginErr" class="err hidden"></div>
+    <div class="field">
+      <label class="f" for="lgUser">Código de tienda o correo</label>
+      <input class="inp" id="lgUser" name="username" autocomplete="username" placeholder="Ej. TRU01" required autocapitalize="characters">
+    </div>
+    <div class="field">
+      <label class="f" for="lgPass">Contraseña</label>
+      <input class="inp" id="lgPass" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <button class="btn amber" style="width:100%;padding:12px" id="lgBtn">Ingresar</button>
+    <p class="hint" style="text-align:center;margin-top:16px">Tiendas: ingresa con tu código de tienda.<br>Marketing: ingresa con tu correo.</p>
+  </form>
+</section>
+
+<div id="boot" class="spin"></div>
+
+<!-- =============================== TIENDA =============================== -->
+<section id="storeView" class="hidden">
+  <header class="top"><div class="in">
+    <div class="brand">NORAVES<small>CONTROL DE TIENDA</small></div>
+    <div class="who"><b id="stName">—</b><span id="stMeta"></span></div>
+    <button class="btn ghost sm" data-logout>Salir</button>
+  </div></header>
+  <main class="wrap" id="storeMain"></main>
+</section>
+
+<!-- =============================== ADMIN =============================== -->
+<section id="adminView" class="hidden">
+  <header class="top"><div class="in">
+    <div class="brand">NORAVES<small>PANEL MARKETING</small></div>
+    <div class="row right" style="gap:8px">
+      <input type="month" id="adMonth" class="inp" style="width:auto;padding:6px 10px;background:#fff;color:var(--ink)" title="Mes del informe">
+      <button class="btn amber sm" id="adExportAll" title="Descargar todos los informes en un solo Excel">⬇ Excel completo</button>
+      <button class="btn ghost sm" data-logout>Salir</button>
+    </div>
+  </div></header>
+  <nav class="tabs"><div class="in" id="adTabs">
+    <button data-tab="resumen" class="on">Resumen</button>
+    <button data-tab="registros">Registros</button>
+    <button data-tab="faltantes">Faltantes</button>
+    <button data-tab="pedido">Pedido y envío</button>
+    <button data-tab="catalogo">Catálogo</button>
+    <button data-tab="tiendas">Tiendas</button>
+  </div></nav>
+  <main class="wrap" id="adMain"></main>
+</section>
+
+<div id="toasts"></div>
+
+<script>
+/* =====================================================================
+   CONFIGURACIÓN
+   ===================================================================== */
+const CONFIG = {
+  SUPABASE_URL: 'https://elnvvoxgfnyicsrutvxs.supabase.co',
+  SUPABASE_KEY: 'sb_publishable_5ksSTQvMzYeYcGnm-boWRg_p-CRLUI1',
+  STORE_EMAIL_DOMAIN: 'tiendas.noraves.app',   // usuario de tienda = codigo@este-dominio
+  BUCKET: 'articulos',
+  FN_TIENDAS: 'gestionar-tienda',
+  TZ: 'America/Lima',
+  EXCELJS: 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+};
+const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+
+/* =====================================================================
+   UTILIDADES
+   ===================================================================== */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDate = d => new Intl.DateTimeFormat('es-PE', {timeZone: CONFIG.TZ, day:'2-digit', month:'2-digit', year:'numeric'}).format(new Date(d));
+const fmtTime = d => new Intl.DateTimeFormat('es-PE', {timeZone: CONFIG.TZ, hour:'2-digit', minute:'2-digit', hour12:false}).format(new Date(d));
+const fmtDT = d => `${fmtDate(d)} ${fmtTime(d)}`;
+const money = n => n == null || n === '' ? '' : 'S/ ' + Number(n).toFixed(2);
+const currentPeriod = () => new Intl.DateTimeFormat('en-CA', {timeZone: CONFIG.TZ, year:'numeric', month:'2-digit'}).format(new Date()) + '-01';
+const periodLabel = p => { const [y, m] = p.split('-'); const s = new Date(+y, +m - 1, 1).toLocaleDateString('es-PE', {month:'long', year:'numeric'}); return s[0].toUpperCase() + s.slice(1); };
+const STATUS = {
+  tiene:       {label:'Lo tenemos',    short:'Tiene',       icon:'✓', cls:'ok'},
+  no_tiene:    {label:'No lo tenemos', short:'No tiene',    icon:'✕', cls:'bad'},
+  deteriorado: {label:'Deteriorado',   short:'Deteriorado', icon:'!', cls:'warn'},
+  en_camino:   {label:'En camino',     short:'En camino',   icon:'➜', cls:'ship'},
+  sin_dato:    {label:'Sin dato',      short:'Sin dato',    icon:'·', cls:''},
+};
+const GRUPOS = ['ARTES', 'MATERIALES'];
+
+function show(id) {
+  ['login', 'storeView', 'adminView', 'boot'].forEach(x => $('#' + x).classList.toggle('hidden', x !== id));
+}
+function toast(msg, type = '') {
+  const t = document.createElement('div'); t.className = 'toast ' + type; t.textContent = msg;
+  $('#toasts').append(t); setTimeout(() => t.remove(), type === 'bad' ? 6000 : 3200);
+}
+function modal(title, bodyHtml, {wide = false, footer = ''} = {}) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
+    <div class="mh"><h3>${title}</h3><button class="x" aria-label="Cerrar">×</button></div>
+    <div class="mb">${bodyHtml}</div>${footer ? `<div class="mf">${footer}</div>` : ''}</div>`;
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('.x') || e.target.closest('[data-close]')) close(); });
+  document.body.append(ov);
+  return {el: ov, close};
+}
+function confirmBox(title, html, okText = 'Confirmar', danger = false) {
+  return new Promise(res => {
+    const m = modal(title, html, {footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn ${danger ? 'danger' : ''}" data-ok>${okText}</button>`});
+    m.el.addEventListener('click', e => { if (e.target.closest('[data-ok]')) { m.close(); res(true); } });
+    const obs = new MutationObserver(() => { if (!document.body.contains(m.el)) { obs.disconnect(); res(false); } });
+    obs.observe(document.body, {childList: true});
+  });
+}
+function lightbox(src, cap) {
+  const d = document.createElement('div'); d.className = 'lb';
+  d.innerHTML = `<img src="${esc(src)}" alt=""><div class="cap">${esc(cap || '')}</div>`;
+  d.onclick = () => d.remove(); document.body.append(d);
+}
+function photoUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('seed/')) return 'fotos/' + path.slice(5);           // fotos iniciales servidas desde el repo
+  return sb.storage.from(CONFIG.BUCKET).getPublicUrl(path).data.publicUrl;  // fotos subidas por el admin
+}
+function errMsg(e) {
+  const m = e?.message || String(e);
+  if (/Invalid login/i.test(m)) return 'Usuario o contraseña incorrectos';
+  if (/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión. Revisa tu internet e inténtalo de nuevo.';
+  return m;
+}
+async function q(promise) { const {data, error} = await promise; if (error) throw error; return data; }
+async function fetchAll(build) {
+  const out = []; const size = 1000;
+  for (let from = 0; ; from += size) {
+    const rows = await q(build().range(from, from + size - 1));
+    out.push(...rows); if (rows.length < size) break;
+  }
+  return out;
+}
+function chunk(arr, n) { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; }
+const store = {   // localStorage seguro
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+/* Optimiza una imagen en el navegador → WebP (grande para PC + miniatura para celular) */
+async function optimizeImage(file) {
+  const bmp = await createImageBitmap(file);
+  const make = async (max, quality) => {
+    const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(bmp, 0, 0, w, h);
+    let blob = await new Promise(r => c.toBlob(r, 'image/webp', quality));
+    if (!blob || blob.type !== 'image/webp') blob = await new Promise(r => c.toBlob(r, 'image/jpeg', quality)); // Safari antiguo
+    return blob;
+  };
+  const full = await make(1600, 0.82), thumb = await make(480, 0.78);
+  return {full, thumb, w: bmp.width, h: bmp.height};
+}
+
+/* =====================================================================
+   SESIÓN Y RUTEO POR ROL
+   ===================================================================== */
+let ME = null;
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('#lgBtn'), err = $('#loginErr');
+  err.classList.add('hidden'); btn.disabled = true; btn.textContent = 'Ingresando…';
+  const u = $('#lgUser').value.trim();
+  const email = u.includes('@') ? u.toLowerCase() : `${u.toLowerCase()}@${CONFIG.STORE_EMAIL_DOMAIN}`;
+  const {error} = await sb.auth.signInWithPassword({email, password: $('#lgPass').value});
+  btn.disabled = false; btn.textContent = 'Ingresar';
+  if (error) { err.textContent = errMsg(error); err.classList.remove('hidden'); return; }
+  route();
+});
+document.addEventListener('click', async e => {
+  if (e.target.closest('[data-logout]')) { await sb.auth.signOut(); location.reload(); }
+});
+
+async function route() {
+  show('boot');
+  const {data: {session}} = await sb.auth.getSession();
+  if (!session) return show('login');
+  try {
+    const prof = await q(sb.from('profiles').select('*').eq('user_id', session.user.id).maybeSingle());
+    if (!prof) throw new Error('Tu usuario no tiene permisos en el sistema. Contacta a Marketing.');
+    ME = {user: session.user, profile: prof};
+    if (prof.role === 'admin') await initAdmin(); else await initStore();
+  } catch (e) {
+    await sb.auth.signOut();
+    show('login'); $('#loginErr').textContent = errMsg(e); $('#loginErr').classList.remove('hidden');
+  }
+}
+
+/* =====================================================================
+   PANEL DE TIENDA
+   ===================================================================== */
+const ST = {store: null, cats: [], items: [], ships: {}, subs: [], answers: {}, notes: '', period: currentPeriod()};
+const draftKey = () => `nv_draft_${ST.store.id}_${ST.period}`;
+
+async function initStore() {
+  const sid = ME.profile.store_id;
+  const [st, cats, items, ships, subs] = await Promise.all([
+    q(sb.from('stores').select('*, cities(name)').eq('id', sid).single()),
+    q(sb.from('categories').select('*').eq('active', true).order('sort')),
+    q(sb.from('items').select('*').eq('active', true).order('sort').order('name')),
+    q(sb.from('shipments').select('*').eq('status', 'en_camino')),
+    q(sb.from('submissions').select('*').order('submitted_at', {ascending: false}).limit(6)),
+  ]);
+  const catIds = new Set(cats.map(c => c.id));
+  Object.assign(ST, {store: st, cats, items: items.filter(i => catIds.has(i.category_id)), subs});
+  ST.ships = {}; ships.forEach(s => ST.ships[s.item_id] = s);
+  ST.prev = null;
+  if (subs[0]) {
+    const rows = await q(sb.from('submission_items').select('item_id,status').eq('submission_id', subs[0].id));
+    if (rows.length) ST.prev = {at: subs[0].submitted_at, answers: Object.fromEntries(rows.map(r => [r.item_id, r.status]))};
+  }
+  const d = store.get(draftKey()) || {};
+  ST.answers = d.answers || {}; ST.notes = d.notes || '';
+  // solo respuestas de artículos que siguen activos
+  Object.keys(ST.answers).forEach(k => { if (!ST.items.find(i => i.id == k)) delete ST.answers[k]; });
+  $('#stName').textContent = st.name;
+  $('#stMeta').textContent = `${st.code} · ${st.cities?.name || ''}`;
+  show('storeView');
+  renderStore();
+}
+
+function renderStore() {
+  const last = ST.subs.find(s => s.period === ST.period);
+  const total = ST.items.length;
+  const done = ST.items.filter(i => ST.answers[i.id]).length;
+  const byCat = id => ST.items.filter(i => i.category_id === id);
+  const enCamino = ST.items.filter(i => ST.ships[i.id]).length;
+
+  let html = `
+  <div class="store-hero">
+    <div><h2>Control de ${esc(periodLabel(ST.period).toLowerCase())}</h2>
+    <div class="muted small">Revisa cada pieza en tu tienda y marca si la tienen, si falta o si está deteriorada.</div></div>
+  </div>
+  ${last && last.source !== 'importado'
+    ? `<div class="status-banner ok"><b style="font-size:20px">✓</b><div>Ya enviaste el control de este mes el <b>${fmtDate(last.submitted_at)}</b> a las <b>${fmtTime(last.submitted_at)}</b>.<br><span class="small">Si algo cambió, puedes volver a enviarlo; Marketing verá la versión más reciente.</span></div></div>`
+    : `<div class="status-banner pending"><b style="font-size:20px">!</b><div>Aún no envías el control de <b>${esc(periodLabel(ST.period).toLowerCase())}</b>.${last ? '<br><span class="small">Marketing cargó tu último estado desde el Excel. Revísalo y envía tu control actualizado.</span>' : ''}</div></div>`}
+  ${ST.prev && !done ? `<div class="row" style="margin-bottom:12px"><button class="btn ghost sm" id="stPrev">↺ Cargar mis respuestas anteriores (${fmtDate(ST.prev.at)})</button><span class="small muted">Luego corrige solo lo que cambió.</span></div>` : ''}
+  ${enCamino ? `<div class="status-banner" style="background:var(--ship-soft);color:#1d4aa5"><b style="font-size:18px">➜</b><div>Marketing te envió <b>${enCamino}</b> pieza(s) que están <b>en camino</b>. Cuando lleguen, márcalas como "Lo tenemos".</div></div>` : ''}
+  <div class="progress"><div class="row small" style="margin-bottom:6px"><b>${done} de ${total} revisados</b><span class="right muted">${total - done ? `Faltan ${total - done}` : '¡Listo para enviar!'}</span></div>
+    <div class="pbar"><i style="width:${total ? done / total * 100 : 0}%"></i></div></div>`;
+
+  for (const g of GRUPOS) {
+    const cats = ST.cats.filter(c => c.grupo === g && byCat(c.id).length);
+    if (!cats.length) continue;
+    html += `<div class="grp-title">${g}</div>`;
+    for (const c of cats) {
+      const its = byCat(c.id);
+      html += `<div class="cat-title">${esc(c.name)} <span class="chip">${its.filter(i => ST.answers[i.id]).length}/${its.length}</span></div><div class="items-grid">`;
+      for (const it of its) html += itemCard(it);
+      html += `</div>`;
+    }
+  }
+  if (!total) html += `<div class="card empty">Todavía no hay artículos cargados. Marketing los agregará pronto.</div>`;
+
+  html += `
+  <div class="card" style="margin-top:22px">
+    <label class="f" for="stNotes">Observaciones (opcional)</label>
+    <textarea id="stNotes" class="inp" rows="3" placeholder="Ej. faltan bases de acrílico, el afiche de la vitrina está despegado…">${esc(ST.notes)}</textarea>
+  </div>
+  ${ST.subs.length ? `<div class="card" style="margin-top:14px"><b>Mis últimos envíos</b><div class="small muted" style="margin-top:6px">${ST.subs.map(s => `${fmtDate(s.submitted_at)} · ${fmtTime(s.submitted_at)}${s.source === 'importado' ? ' (importado del Excel)' : ''}`).join('<br>')}</div></div>` : ''}
+  <div class="send-bar"><div class="in">
+    <div class="small grow">${done === total && total ? '<b style="color:var(--ok)">Todo revisado ✓</b>' : `<b>${total - done}</b> por revisar`}</div>
+    <button class="btn ghost sm" id="stJump" ${done === total ? 'disabled' : ''}>Ir al siguiente</button>
+    <button class="btn amber" id="stSend" ${done === total && total ? '' : 'disabled'}>Guardar y enviar</button>
+  </div></div>`;
+  $('#storeMain').innerHTML = html;
+}
+
+function itemCard(it) {
+  const a = ST.answers[it.id];
+  const ratio = it.photo_w && it.photo_h ? Math.min(Math.max(it.photo_w / it.photo_h, 0.55), 1.9) : 0.75;
+  const src = photoUrl(it.thumb_path || it.photo_path);
+  const ship = ST.ships[it.id];
+  return `<div class="it ${a ? 's-' + a : ''}" id="it-${it.id}">
+    <div class="ph" style="aspect-ratio:${ratio}" data-zoom="${it.id}">
+      ${src ? `<img loading="lazy" src="${esc(src)}" alt="${esc(it.name)}">` : '<span class="noimg">Sin foto</span>'}
+      ${ship ? `<span class="chip ship badge">➜ En camino</span>` : ''}
+    </div>
+    <div class="body"><div class="name">${esc(it.name)}</div>
+      <div class="ans">${['tiene', 'no_tiene', 'deteriorado'].map(s =>
+        `<button type="button" data-item="${it.id}" data-s="${s}" class="${a === s ? 'on' : ''}"><span class="dot">${STATUS[s].icon}</span>${STATUS[s].label}</button>`).join('')}</div>
+    </div></div>`;
+}
+
+function saveDraft() { store.set(draftKey(), {answers: ST.answers, notes: ST.notes}); }
+
+document.addEventListener('click', e => {
+  if (!ST.store || $('#storeView').classList.contains('hidden')) return;
+  const b = e.target.closest('.ans button');
+  if (b) {
+    const id = b.dataset.item;
+    ST.answers[id] = b.dataset.s; saveDraft();
+    const y = window.scrollY; renderStore(); window.scrollTo(0, y);
+    return;
+  }
+  const z = e.target.closest('[data-zoom]');
+  if (z) { const it = ST.items.find(i => i.id == z.dataset.zoom); if (it?.photo_path) lightbox(photoUrl(it.photo_path), it.name); return; }
+  if (e.target.closest('#stJump')) {
+    const next = ST.items.find(i => !ST.answers[i.id]);
+    if (next) $('#it-' + next.id).scrollIntoView({behavior: 'smooth', block: 'center'});
+    return;
+  }
+  if (e.target.closest('#stSend')) sendChecklist();
+  if (e.target.closest('#stPrev')) {
+    ST.items.forEach(i => { if (!ST.answers[i.id] && ST.prev.answers[i.id]) ST.answers[i.id] = ST.prev.answers[i.id]; });
+    saveDraft(); renderStore(); toast('Respuestas anteriores cargadas. Revisa y corrige lo que cambió.');
+  }
+});
+document.addEventListener('input', e => { if (e.target.id === 'stNotes') { ST.notes = e.target.value; saveDraft(); } });
+
+async function sendChecklist() {
+  const c = s => ST.items.filter(i => ST.answers[i.id] === s).length;
+  const ok = await confirmBox('¿Enviar control?', `
+    <p>Vas a enviar el control de <b>${esc(ST.store.name)}</b> (${esc(ST.store.code)}).</p>
+    <div class="sum3"><div class="c-tiene"><b>${c('tiene')}</b>Lo tenemos</div><div class="c-no_tiene"><b>${c('no_tiene')}</b>No lo tenemos</div><div class="c-deteriorado"><b>${c('deteriorado')}</b>Deteriorado</div></div>
+    <p class="small muted">Se registrará la fecha y hora de envío.</p>`, 'Enviar');
+  if (!ok) return;
+  const btn = $('#stSend'); btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const answers = {}; ST.items.forEach(i => answers[i.id] = ST.answers[i.id]);
+    const r = await q(sb.rpc('submit_checklist', {p_answers: answers, p_notes: ST.notes || null}));
+    store.del(draftKey());
+    modal('¡Control enviado! ✓', `<p style="font-size:15px">Se registró el envío de <b>${esc(ST.store.name)}</b> el <b>${fmtDate(r.submitted_at)}</b> a las <b>${fmtTime(r.submitted_at)}</b>.</p><p class="muted small">Gracias. Marketing ya puede ver tu reporte.</p>`, {footer: '<button class="btn" data-close>Listo</button>'});
+    await initStore();
+    ST.answers = Object.fromEntries(Object.entries(answers)); // deja visibles las respuestas enviadas
+    renderStore();
+  } catch (e) {
+    toast('No se pudo enviar: ' + errMsg(e), 'bad');
+    btn.disabled = false; btn.textContent = 'Guardar y enviar';
+  }
+}
+
+/* =====================================================================
+   PANEL ADMIN — datos
+   ===================================================================== */
+const A = {tab: 'resumen', period: currentPeriod(), view: {}, filters: {city: '', cat: '', onlyNeed: false, mode: 'matriz'}};
+
+async function initAdmin() {
+  show('adminView');
+  $('#adMonth').value = A.period.slice(0, 7);
+  await loadAdmin();
+  renderAdmin();
+}
+$('#adMonth').addEventListener('change', async e => {
+  if (!e.target.value) return;
+  A.period = e.target.value + '-01'; $('#adMain').innerHTML = '<div class="spin"></div>';
+  await loadAdmin(); renderAdmin();
+});
+$('#adTabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]'); if (!b) return;
+  A.tab = b.dataset.tab; $$('#adTabs button').forEach(x => x.classList.toggle('on', x === b)); renderAdmin();
+});
+$('#adExportAll').addEventListener('click', () => exportTodo());
+
+async function loadAdmin() {
+  const [cities, stores, cats, items, iadm, subs, ships] = await Promise.all([
+    q(sb.from('cities').select('*').order('sort').order('name')),
+    q(sb.from('stores').select('*').order('code')),
+    q(sb.from('categories').select('*').order('sort').order('name')),
+    q(sb.from('items').select('*').order('sort').order('name')),
+    q(sb.from('item_admin').select('*')),
+    fetchAll(() => sb.from('submissions').select('*').eq('period', A.period).order('submitted_at', {ascending: false})),
+    fetchAll(() => sb.from('shipments').select('*').order('sent_at', {ascending: false})),
+  ]);
+  const subItems = {};
+  for (const ids of chunk(subs.map(s => s.id), 150)) {
+    const rows = await fetchAll(() => sb.from('submission_items').select('*').in('submission_id', ids));
+    rows.forEach(r => (subItems[r.submission_id] ||= {})[r.item_id] = r.status);
+  }
+  const latest = {};
+  subs.forEach(s => { if (!latest[s.store_id]) latest[s.store_id] = s; });   // vienen ordenados desc
+  const openShip = {};
+  ships.filter(s => s.status === 'en_camino').forEach(s => {
+    const k = s.store_id + ':' + s.item_id; openShip[k] = (openShip[k] || 0) + s.qty;
+  });
+  Object.assign(A, {
+    cities, stores, cats, items, subs, ships, subItems, latest, openShip,
+    iadm: Object.fromEntries(iadm.map(r => [r.item_id, r])),
+    cityById: Object.fromEntries(cities.map(c => [c.id, c])),
+    catById: Object.fromEntries(cats.map(c => [c.id, c])),
+    storeById: Object.fromEntries(stores.map(s => [s.id, s])),
+    itemById: Object.fromEntries(items.map(i => [i.id, i])),
+  });
+}
+
+/* Estado de un artículo en una tienda para el mes elegido */
+function cellState(storeId, itemId) {
+  const sub = A.latest[storeId];
+  const st = sub ? A.subItems[sub.id]?.[itemId] : null;
+  if (st === 'tiene') return 'tiene';
+  if (A.openShip[storeId + ':' + itemId]) return 'en_camino';
+  return st || 'sin_dato';
+}
+const needs = s => s === 'no_tiene' || s === 'deteriorado';
+const qtyPer = itemId => A.iadm[itemId]?.qty_per_store || 1;
+
+function reportItems() {
+  const f = A.filters;
+  return A.items.filter(i => i.active && A.catById[i.category_id]?.active)
+    .filter(i => !f.cat || (f.cat.startsWith('G:') ? A.catById[i.category_id].grupo === f.cat.slice(2) : i.category_id == f.cat))
+    .sort((a, b) => (A.catById[a.category_id].sort - A.catById[b.category_id].sort) || (a.sort - b.sort));
+}
+function reportStores() {
+  return A.stores.filter(s => s.active && (!A.filters.city || s.city_id == A.filters.city))
+    .sort((a, b) => (A.cityById[a.city_id].sort - A.cityById[b.city_id].sort) || a.code.localeCompare(b.code));
+}
+function itemTotals(items = reportItems(), stores = reportStores()) {
+  return items.map(it => {
+    const t = {item: it, cat: A.catById[it.category_id], adm: A.iadm[it.id] || {}, no_tiene: 0, deteriorado: 0, en_camino: 0, tiene: 0, sin_dato: 0};
+    stores.forEach(s => t[cellState(s.id, it.id)]++);
+    t.reponer = (t.no_tiene + t.deteriorado) * qtyPer(it.id);
+    t.stock = t.adm.stock || 0;
+    t.pedir = Math.max(0, t.reponer - t.stock);
+    t.costo = t.adm.suggested_price != null ? t.pedir * t.adm.suggested_price : null;
+    return t;
+  });
+}
+
+/* =====================================================================
+   PANEL ADMIN — vistas
+   ===================================================================== */
+function filtersBar({city = true, cat = true, onlyNeed = false} = {}) {
+  const f = A.filters;
+  return `${city ? `<select class="inp" style="width:auto" data-f="city"><option value="">Todas las ciudades</option>${A.cities.map(c => `<option value="${c.id}" ${f.city == c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : ''}
+  ${cat ? `<select class="inp" style="width:auto" data-f="cat"><option value="">Todas las categorías</option>${GRUPOS.map(g => `<option value="G:${g}" ${f.cat === 'G:' + g ? 'selected' : ''}>— ${g} (todo) —</option>${A.cats.filter(c => c.grupo === g && c.active).map(c => `<option value="${c.id}" ${f.cat == c.id ? 'selected' : ''}>&nbsp;&nbsp;${esc(c.name)}</option>`).join('')}`).join('')}</select>` : ''}
+  ${onlyNeed ? `<label class="row small" style="gap:6px;font-weight:600;background:#fff;border:1.5px solid var(--line);padding:7px 11px;border-radius:10px"><input type="checkbox" data-f="onlyNeed" ${f.onlyNeed ? 'checked' : ''}> Solo lo que hay que pedir y enviar</label>` : ''}`;
+}
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-f]'); if (!el) return;
+  A.filters[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value; renderAdmin();
+});
+
+function renderAdmin() {
+  const fn = {resumen: vResumen, registros: vRegistros, faltantes: vFaltantes, pedido: vPedido, catalogo: vCatalogo, tiendas: vTiendas}[A.tab];
+  $('#adMain').innerHTML = fn();
+}
+
+/* ---------- Resumen ---------- */
+function vResumen() {
+  const act = A.stores.filter(s => s.active);
+  const filled = act.filter(s => A.latest[s.id]);
+  const tot = itemTotals(reportItems(), act);
+  const sum = k => tot.reduce((a, t) => a + t[k], 0);
+  const pend = act.filter(s => !A.latest[s.id]);
+  const incomplete = A.items.filter(i => i.active && A.iadm[i.id]?.supplier === 'POR DEFINIR').length;
+  return `
+  <div class="toolbar"><h2>Resumen · ${esc(periodLabel(A.period))}</h2></div>
+  <div class="kpis">
+    <div class="kpi"><div class="v">${filled.length}<span class="muted" style="font-size:16px">/${act.length}</span></div><div class="l">Tiendas que enviaron su control</div></div>
+    <div class="kpi bad"><div class="v">${sum('no_tiene')}</div><div class="l">Piezas faltantes</div></div>
+    <div class="kpi warn"><div class="v">${sum('deteriorado')}</div><div class="l">Piezas deterioradas</div></div>
+    <div class="kpi ship"><div class="v">${sum('en_camino')}</div><div class="l">Piezas en camino</div></div>
+    <div class="kpi"><div class="v">${tot.reduce((a, t) => a + t.pedir, 0)}</div><div class="l">Unidades a pedir al proveedor</div></div>
+  </div>
+  ${incomplete ? `<div class="status-banner pending"><b>!</b><div><b>${incomplete}</b> artículo(s) tienen proveedor/material "POR DEFINIR". Complétalos en <a href="#" data-goto="catalogo">Catálogo</a> para que el pedido al proveedor salga completo.</div></div>` : ''}
+  <div class="grid2" style="align-items:start">
+    <div class="card"><b>Avance por ciudad</b>
+      <table class="t" style="margin-top:8px"><thead><tr><th>Ciudad</th><th class="num">Enviaron</th><th style="width:45%"></th></tr></thead><tbody>
+      ${A.cities.map(c => { const ss = act.filter(s => s.city_id === c.id); if (!ss.length) return ''; const n = ss.filter(s => A.latest[s.id]).length;
+        return `<tr><td>${esc(c.name)}</td><td class="num">${n}/${ss.length}</td><td><div class="pbar"><i style="width:${n / ss.length * 100}%"></i></div></td></tr>`; }).join('')}
+      </tbody></table></div>
+    <div class="card"><b>Pendientes de enviar (${pend.length})</b>
+      <div style="margin-top:8px">${pend.length ? pend.map(s => `<div class="row small" style="padding:5px 0;border-bottom:1px solid var(--line)"><span class="chip navy">${esc(s.code)}</span>${esc(s.name)}<span class="right muted">${esc(A.cityById[s.city_id]?.name)}</span></div>`).join('') : '<p class="muted">Todas las tiendas enviaron su control 🎉</p>'}</div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><b>Últimos envíos</b>
+    <table class="t" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Tienda</th><th>Ciudad</th></tr></thead><tbody>
+    ${A.subs.slice(0, 10).map(s => { const st = A.storeById[s.store_id]; return `<tr><td>${fmtDate(s.submitted_at)}</td><td>${fmtTime(s.submitted_at)}</td><td><span class="chip navy">${esc(st?.code)}</span></td><td>${esc(st?.name)}${s.source === 'importado' ? ' <span class="chip">Excel</span>' : ''}</td><td>${esc(A.cityById[st?.city_id]?.name)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">Sin envíos este mes</td></tr>'}
+    </tbody></table></div>`;
+}
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-goto]'); if (!g) return; e.preventDefault();
+  $(`#adTabs [data-tab="${g.dataset.goto}"]`).click();
+});
+
+/* ---------- Registros ---------- */
+function registroRows() {
+  return A.subs.filter(s => {
+    const st = A.storeById[s.store_id];
+    return st && (!A.filters.city || st.city_id == A.filters.city) && (!A.filters.onlyLatest || A.latest[s.store_id]?.id === s.id);
+  }).map(s => {
+    const st = A.storeById[s.store_id], it = A.subItems[s.id] || {}, v = Object.values(it);
+    return {s, st, city: A.cityById[st.city_id]?.name, tiene: v.filter(x => x === 'tiene').length, no: v.filter(x => x === 'no_tiene').length, det: v.filter(x => x === 'deteriorado').length};
+  });
+}
+function vRegistros() {
+  const rows = registroRows();
+  const pend = A.stores.filter(s => s.active && !A.latest[s.id] && (!A.filters.city || s.city_id == A.filters.city));
+  return `
+  <div class="toolbar"><h2>Registros de llenado</h2>${filtersBar({cat: false})}
+    <label class="row small" style="gap:6px;font-weight:600"><input type="checkbox" data-f="onlyLatest" ${A.filters.onlyLatest ? 'checked' : ''}> Solo el último de cada tienda</label>
+    <button class="btn sm right" data-x="registros">⬇ Excel</button></div>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Tienda</th><th>Ciudad</th><th class="num">Tiene</th><th class="num">No tiene</th><th class="num">Deteriorado</th><th>Observación</th><th></th></tr></thead><tbody>
+  ${rows.map(r => `<tr><td>${fmtDate(r.s.submitted_at)}</td><td>${fmtTime(r.s.submitted_at)}</td><td><span class="chip navy">${esc(r.st.code)}</span></td>
+    <td>${esc(r.st.name)} ${A.latest[r.st.id]?.id === r.s.id ? '<span class="chip ok">vigente</span>' : ''} ${r.s.source === 'importado' ? '<span class="chip">Excel</span>' : ''}</td><td>${esc(r.city)}</td>
+    <td class="num">${r.tiene}</td><td class="num" style="color:var(--bad)">${r.no}</td><td class="num" style="color:var(--warn)">${r.det}</td><td class="small">${esc(r.s.notes || '')}</td>
+    <td><button class="btn ghost xs" data-sub="${r.s.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="10" class="empty">Sin registros en este mes</td></tr>'}
+  </tbody></table></div>
+  ${pend.length ? `<div class="card" style="margin-top:14px"><b>No han enviado en ${esc(periodLabel(A.period).toLowerCase())}:</b> <span class="small">${pend.map(s => `${esc(s.code)} ${esc(s.name)}`).join(' · ')}</span></div>` : ''}`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-sub]'); if (!b) return;
+  const s = A.subs.find(x => x.id == b.dataset.sub), st = A.storeById[s.store_id], its = A.subItems[s.id] || {};
+  const rows = Object.entries(its).map(([iid, stt]) => ({it: A.itemById[iid], stt})).filter(r => r.it)
+    .sort((a, b) => (A.catById[a.it.category_id].sort - A.catById[b.it.category_id].sort) || a.it.sort - b.it.sort);
+  modal(`${esc(st.code)} · ${esc(st.name)}`, `<p class="small muted">Enviado el ${fmtDT(s.submitted_at)}${s.notes ? ` · <b>Obs.:</b> ${esc(s.notes)}` : ''}</p>
+    <div class="tbl-wrap" style="max-height:60vh"><table class="t"><tbody>${rows.map(r => `<tr><td><img class="thumb" src="${esc(photoUrl(r.it.thumb_path))}" alt=""></td><td>${esc(r.it.name)}<div class="small muted">${esc(A.catById[r.it.category_id].name)}</div></td><td><span class="chip ${STATUS[r.stt].cls}">${STATUS[r.stt].short}</span></td></tr>`).join('')}</tbody></table></div>`, {wide: true});
+});
+
+/* ---------- Faltantes ---------- */
+function vFaltantes() {
+  const m = A.filters.mode;
+  const items = reportItems(), stores = reportStores();
+  const head = `
+  <div class="toolbar"><h2>Faltantes</h2>
+    <div class="seg">${[['matriz', 'Matriz'], ['tienda', 'Por tienda'], ['ciudad', 'Por ciudad'], ['total', 'Total']].map(([k, l]) => `<button data-mode="${k}" class="${m === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${filtersBar({onlyNeed: true})}
+    <button class="btn sm right" data-x="faltantes">⬇ Excel (esta vista)</button></div>
+  <div class="legend" style="margin-bottom:12px">${['tiene', 'no_tiene', 'deteriorado', 'en_camino', 'sin_dato'].map(s => `<span class="chip ${STATUS[s].cls}">${STATUS[s].icon} ${STATUS[s].short}</span>`).join('')}</div>`;
+  if (!items.length) return head + '<div class="card empty">No hay artículos para este filtro.</div>';
+
+  if (m === 'matriz') {
+    const show = s => !A.filters.onlyNeed || needs(s);
+    const catsUsed = [...new Set(items.map(i => i.category_id))];
+    let rowsHtml = '', lastCity = null;
+    for (const s of stores) {
+      if (A.filters.onlyNeed && !items.some(i => needs(cellState(s.id, i.id)))) continue;
+      if (s.city_id !== lastCity) { lastCity = s.city_id; rowsHtml += `<tr class="city"><td class="st" colspan="1">${esc(A.cityById[s.city_id].name)}</td><td colspan="${items.length + 1}"></td></tr>`; }
+      rowsHtml += `<tr><td class="st"><b>${esc(s.code)}</b> ${esc(s.name)}<div class="small muted">${A.latest[s.id] ? fmtDT(A.latest[s.id].submitted_at) : 'sin envío este mes'}</div></td>${items.map(i => {
+        const c = cellState(s.id, i.id); return `<td class="c ${show(c) ? 'c-' + c : ''}" title="${esc(i.name)} · ${STATUS[c].short}">${show(c) ? STATUS[c].icon : ''}</td>`; }).join('')}
+        <td class="num"><b>${items.filter(i => needs(cellState(s.id, i.id))).length}</b></td></tr>`;
+    }
+    return head + `<div class="tbl-wrap" style="max-height:75vh"><table class="t mx"><thead>
+      <tr><th class="st"></th>${catsUsed.map(cid => `<th class="cat-h" colspan="${items.filter(i => i.category_id === cid).length}">${esc(A.catById[cid].name)}</th>`).join('')}<th></th></tr>
+      <tr><th class="st" style="vertical-align:bottom">Tienda</th>${items.map(i => `<th class="it-h" title="${esc(i.name)}"><span>${esc(i.name)}</span></th>`).join('')}<th class="it-h"><span>Por reponer</span></th></tr>
+      <tr><th class="st small">Stock almacén →</th>${items.map(i => `<th class="num" style="text-align:center">${A.iadm[i.id]?.stock ?? 0}</th>`).join('')}<th></th></tr>
+      </thead><tbody>${rowsHtml || `<tr><td colspan="${items.length + 2}" class="empty">Nada pendiente 🎉</td></tr>`}</tbody></table></div>`;
+  }
+
+  if (m === 'tienda') {
+    const blocks = stores.map(s => {
+      const list = items.map(i => ({i, c: cellState(s.id, i.id)})).filter(x => A.filters.onlyNeed ? needs(x.c) : (needs(x.c) || x.c === 'en_camino'));
+      if (!list.length) return '';
+      return `<div class="store-block"><div class="hd"><span class="chip navy">${esc(s.code)}</span><h3>${esc(s.name)}</h3><span class="muted small">${esc(A.cityById[s.city_id].name)}</span>
+        <span class="right small muted">${A.latest[s.id] ? 'Último envío: ' + fmtDT(A.latest[s.id].submitted_at) : 'Sin envío este mes'}</span></div>
+        ${list.map(x => `<div class="need-row"><img class="thumb" src="${esc(photoUrl(x.i.thumb_path))}" alt=""><div class="grow">${esc(x.i.name)}<div class="small muted">${esc(A.catById[x.i.category_id].name)}</div></div><span class="chip ${STATUS[x.c].cls}">${STATUS[x.c].short}</span></div>`).join('')}</div>`;
+    }).join('');
+    return head + (blocks || '<div class="card empty">Ninguna tienda tiene faltantes con este filtro 🎉</div>');
+  }
+
+  if (m === 'ciudad') {
+    const cities = A.cities.filter(c => stores.some(s => s.city_id === c.id));
+    const rows = items.map(i => {
+      const per = cities.map(c => stores.filter(s => s.city_id === c.id && needs(cellState(s.id, i.id))).length * qtyPer(i.id));
+      const ship = stores.filter(s => cellState(s.id, i.id) === 'en_camino').length;
+      return {i, per, total: per.reduce((a, b) => a + b, 0), ship};
+    }).filter(r => !A.filters.onlyNeed || r.total);
+    return head + `<div class="tbl-wrap"><table class="t"><thead><tr><th>Artículo</th><th>Categoría</th>${cities.map(c => `<th class="num">${esc(c.name)}</th>`).join('')}<th class="num">Total a reponer</th><th class="num">En camino</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(r.i.thumb_path))}" alt="">${esc(r.i.name)}</div></td><td class="small">${esc(A.catById[r.i.category_id].name)}</td>${r.per.map(n => `<td class="num" style="${n ? 'color:var(--bad);font-weight:700' : 'color:var(--none)'}">${n}</td>`).join('')}<td class="num"><b>${r.total}</b></td><td class="num" style="color:var(--ship)">${r.ship}</td></tr>`).join('')}
+      <tr><td colspan="2"><b>TOTAL</b></td>${cities.map((c, k) => `<td class="num"><b>${rows.reduce((a, r) => a + r.per[k], 0)}</b></td>`).join('')}<td class="num"><b>${rows.reduce((a, r) => a + r.total, 0)}</b></td><td class="num"><b>${rows.reduce((a, r) => a + r.ship, 0)}</b></td></tr>
+      </tbody></table></div>`;
+  }
+
+  // total
+  const tot = itemTotals(items, stores).filter(t => !A.filters.onlyNeed || t.reponer);
+  return head + `<div class="tbl-wrap"><table class="t"><thead><tr><th>Artículo</th><th>Categoría</th><th class="num">No tiene</th><th class="num">Deteriorado</th><th class="num">A reponer</th><th class="num">En camino</th><th class="num">Stock</th><th class="num">A pedir</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">Costo est.</th></tr></thead><tbody>
+    ${tot.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td class="small">${esc(t.cat.grupo)} · ${esc(t.cat.name)}</td>
+      <td class="num" style="color:var(--bad)">${t.no_tiene}</td><td class="num" style="color:var(--warn)">${t.deteriorado}</td><td class="num"><b>${t.reponer}</b></td><td class="num" style="color:var(--ship)">${t.en_camino}</td><td class="num">${t.stock}</td>
+      <td class="num"><b style="color:${t.pedir ? 'var(--bad)' : 'var(--ok)'}">${t.pedir}</b></td><td class="small">${esc(t.adm.supplier || '')}</td><td class="small">${esc(t.adm.material || '')}</td><td class="small">${esc(t.adm.size || '')}</td><td class="num small">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
+    <tr><td colspan="2"><b>TOTAL</b></td>${['no_tiene', 'deteriorado', 'reponer', 'en_camino', 'stock', 'pedir'].map(k => `<td class="num"><b>${tot.reduce((a, t) => a + t[k], 0)}</b></td>`).join('')}<td colspan="3"></td><td class="num"><b>${money(tot.reduce((a, t) => a + (t.costo || 0), 0))}</b></td></tr>
+    </tbody></table></div>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-mode]'); if (!b) return; A.filters.mode = b.dataset.mode; renderAdmin();
+});
+
+/* ---------- Pedido y envío ---------- */
+function pendingSends() {
+  const items = reportItems(), out = [];
+  for (const s of reportStores()) for (const i of items) {
+    const c = cellState(s.id, i.id);
+    if (needs(c)) out.push({s, i, c, qty: qtyPer(i.id)});
+  }
+  return out;
+}
+function vPedido() {
+  const list = pendingSends();
+  const byStore = {}; list.forEach(r => (byStore[r.s.id] ||= []).push(r));
+  const tot = itemTotals().filter(t => t.pedir > 0);
+  const bySup = {}; tot.forEach(t => (bySup[t.adm.supplier || 'SIN PROVEEDOR'] ||= []).push(t));
+  const open = A.ships.filter(x => x.status === 'en_camino' && A.storeById[x.store_id] && (!A.filters.city || A.storeById[x.store_id].city_id == A.filters.city));
+  return `
+  <div class="toolbar"><h2>Pedido y envío</h2>${filtersBar()}<button class="btn sm right" data-x="pedido">⬇ Excel</button></div>
+  <div class="seg" style="margin-bottom:14px">${[['enviar', `1 · Enviar a tiendas (${list.length})`], ['proveedor', `2 · Pedir al proveedor (${tot.length})`], ['camino', `3 · En camino (${open.length})`]].map(([k, l]) => `<button data-pmode="${k}" class="${(A.filters.pmode || 'enviar') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  ${(A.filters.pmode || 'enviar') === 'enviar' ? `
+    <p class="small muted" style="margin-top:0">Marca lo que ya despachaste. Pasará a <b>"En camino"</b>, se descontará del stock de almacén y la tienda lo verá. Cuando la tienda marque "Lo tenemos", se cerrará como recibido.</p>
+    ${list.length ? `<div class="row" style="margin-bottom:12px"><input class="inp grow" id="shipNote" placeholder="Nota del envío (opcional): ej. guía Shalom 12345, enviado con el camión de reparto…"><button class="btn ok" data-ship-selected>✓ Marcar seleccionados como enviados</button></div>` : ''}
+    ${Object.values(byStore).map(rows => { const s = rows[0].s; return `<div class="store-block"><div class="hd">
+        <label class="row" style="gap:8px"><input type="checkbox" data-selstore="${s.id}"> <span class="chip navy">${esc(s.code)}</span><h3>${esc(s.name)}</h3></label><span class="muted small">${esc(A.cityById[s.city_id].name)}</span>
+        <button class="btn ok sm right" data-ship-store="${s.id}">✓ Enviar todo a esta tienda</button></div>
+        ${rows.map(r => { const stock = A.iadm[r.i.id]?.stock ?? 0; return `<div class="need-row"><input type="checkbox" data-sel="${s.id}:${r.i.id}"><img class="thumb" src="${esc(photoUrl(r.i.thumb_path))}" alt="">
+          <div class="grow">${esc(r.i.name)}<div class="small muted">${esc(A.catById[r.i.category_id].name)} · Stock almacén: <b style="color:${stock ? 'var(--ok)' : 'var(--bad)'}">${stock}</b></div></div>
+          <span class="chip ${STATUS[r.c].cls}">${STATUS[r.c].short}</span><input type="number" min="1" class="inp" value="${r.qty}" data-qty="${s.id}:${r.i.id}" title="Cantidad">
+          <button class="btn ghost sm" data-ship-one="${s.id}:${r.i.id}">Enviado</button></div>`; }).join('')}</div>`; }).join('') || '<div class="card empty">No hay nada por enviar 🎉</div>'}`
+  : (A.filters.pmode === 'proveedor') ? `
+    <p class="small muted" style="margin-top:0">A pedir = (faltantes + deteriorados) × cantidad por tienda − stock en almacén.</p>
+    ${Object.entries(bySup).map(([sup, ts]) => `<div class="store-block"><div class="hd"><h3>${esc(sup)}</h3><span class="right chip amber">${ts.reduce((a, t) => a + t.pedir, 0)} unidades${ts.some(t => t.costo != null) ? ' · ' + money(ts.reduce((a, t) => a + (t.costo || 0), 0)) : ''}</span></div>
+      <table class="t"><thead><tr><th>Artículo</th><th>Material</th><th>Medida</th><th class="num">Necesitan</th><th class="num">Stock</th><th class="num">A pedir</th><th class="num">P. sugerido</th><th class="num">Subtotal</th></tr></thead><tbody>
+      ${ts.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td>${esc(t.adm.material)}</td><td>${esc(t.adm.size)}</td><td class="num">${t.reponer}</td><td class="num">${t.stock}</td><td class="num"><b>${t.pedir}</b></td><td class="num">${money(t.adm.suggested_price)}</td><td class="num">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
+      </tbody></table></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
+  : `
+    <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Cant.</th><th>Nota</th><th></th></tr></thead><tbody>
+    ${open.map(x => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id]; return `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}</td><td class="num">${x.qty}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty">No hay envíos en camino</td></tr>'}
+    </tbody></table></div>`}`;
+}
+document.addEventListener('click', async e => {
+  const pm = e.target.closest('[data-pmode]'); if (pm) { A.filters.pmode = pm.dataset.pmode; return renderAdmin(); }
+  let rows = null;
+  const qtyOf = k => Math.max(1, parseInt($(`[data-qty="${k}"]`)?.value) || 1);
+  const toRow = k => { const [store_id, item_id] = k.split(':').map(Number); return {store_id, item_id, qty: qtyOf(k)}; };
+  if (e.target.closest('[data-ship-one]')) rows = [toRow(e.target.closest('[data-ship-one]').dataset.shipOne)];
+  else if (e.target.closest('[data-ship-store]')) { const sid = e.target.closest('[data-ship-store]').dataset.shipStore; rows = $$(`[data-sel^="${sid}:"]`).map(c => toRow(c.dataset.sel)); }
+  else if (e.target.closest('[data-ship-selected]')) { rows = $$('[data-sel]:checked').map(c => toRow(c.dataset.sel)); if (!rows.length) return toast('Selecciona al menos un artículo'); }
+  else if (e.target.closest('[data-cancel-ship]')) {
+    if (!await confirmBox('Anular envío', 'El artículo volverá a figurar como faltante y se devolverá la cantidad al stock de almacén.', 'Anular', true)) return;
+    try { await q(sb.rpc('cancel_shipment', {p_id: +e.target.closest('[data-cancel-ship]').dataset.cancelShip})); toast('Envío anulado', 'ok'); await loadAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+    return;
+  }
+  if (!rows) return;
+  const units = rows.reduce((a, r) => a + r.qty, 0);
+  if (!await confirmBox('Marcar como enviado', `<p>Se marcarán <b>${rows.length}</b> artículo(s) (${units} unidades) como <b>En camino</b> y se descontarán del stock de almacén.</p>`, 'Marcar enviado')) return;
+  try {
+    await q(sb.rpc('mark_shipped', {p_rows: rows, p_note: $('#shipNote')?.value || null}));
+    toast(`${rows.length} envío(s) registrados`, 'ok'); await loadAdmin(); renderAdmin();
+  } catch (er) { toast(errMsg(er), 'bad'); }
+});
+document.addEventListener('change', e => {
+  const c = e.target.closest('[data-selstore]'); if (!c) return;
+  $$(`[data-sel^="${c.dataset.selstore}:"]`).forEach(x => x.checked = c.checked);
+});
+
+/* ---------- Catálogo ---------- */
+function vCatalogo() {
+  const showOff = A.filters.showOff;
+  const cats = A.cats.filter(c => showOff || c.active);
+  const items = A.items.filter(i => (showOff || i.active) && (!A.filters.cat || (A.filters.cat.startsWith('G:') ? A.catById[i.category_id]?.grupo === A.filters.cat.slice(2) : i.category_id == A.filters.cat)))
+    .sort((a, b) => (A.catById[a.category_id].sort - A.catById[b.category_id].sort) || a.sort - b.sort);
+  return `
+  <div class="toolbar"><h2>Categorías</h2><button class="btn sm" data-cat-new>+ Nueva categoría</button>
+    <label class="row small right" style="gap:6px;font-weight:600"><input type="checkbox" data-f="showOff" ${showOff ? 'checked' : ''}> Mostrar quitados</label></div>
+  ${GRUPOS.map(g => `<div class="grp-title" style="margin-top:4px">${g}</div><div class="cat-list" style="margin-bottom:10px">${cats.filter(c => c.grupo === g).map(c => {
+      const n = A.items.filter(i => i.category_id === c.id && i.active).length;
+      return `<div class="cat-item ${c.active ? '' : 'off'}"><div class="grow"><b>${esc(c.name)}</b><div class="small muted">${n} artículo(s)</div></div>
+      <button class="btn ghost xs" data-cat-edit="${c.id}">Editar</button>${c.active ? `<button class="btn ghost xs" data-cat-off="${c.id}">Quitar</button>` : `<button class="btn ghost xs" data-cat-on="${c.id}">Restaurar</button>`}</div>`; }).join('') || '<span class="muted small">Sin categorías</span>'}</div>`).join('')}
+  <div class="toolbar" style="margin-top:26px"><h2>Artículos</h2>${filtersBar({city: false})}<button class="btn amber sm right" data-item-new>+ Nuevo artículo</button><button class="btn ghost sm" data-x="catalogo">⬇ Excel</button></div>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Foto</th><th>Artículo</th><th>Categoría</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">P. sugerido</th><th class="num">Stock</th><th class="num">x tienda</th><th></th></tr></thead><tbody>
+  ${items.map(i => { const a = A.iadm[i.id] || {}; const inc = a.supplier === 'POR DEFINIR' || a.material === 'POR DEFINIR';
+    return `<tr style="${i.active ? '' : 'opacity:.5'}"><td><img class="thumb" style="width:46px;height:56px;cursor:zoom-in" src="${esc(photoUrl(i.thumb_path))}" data-lb="${i.id}" alt=""></td><td><b>${esc(i.name)}</b>${inc ? ' <span class="chip amber">Completar datos</span>' : ''}${i.active ? '' : ' <span class="chip">Quitado</span>'}</td>
+    <td class="small">${esc(A.catById[i.category_id]?.grupo)} · ${esc(A.catById[i.category_id]?.name)}</td><td class="small">${esc(a.supplier || '—')}</td><td class="small">${esc(a.material || '—')}</td><td class="small">${esc(a.size || '—')}</td>
+    <td class="num small">${money(a.suggested_price)}</td><td class="num">${a.stock ?? 0}</td><td class="num">${a.qty_per_store ?? 1}</td>
+    <td style="white-space:nowrap"><button class="btn ghost xs" data-item-edit="${i.id}">Editar</button> ${i.active ? `<button class="btn ghost xs" data-item-off="${i.id}">Quitar</button>` : `<button class="btn ghost xs" data-item-on="${i.id}">Restaurar</button>`}</td></tr>`; }).join('') || '<tr><td colspan="10" class="empty">Sin artículos</td></tr>'}
+  </tbody></table></div>
+  <p class="hint">"Quitar" oculta el artículo o categoría para las tiendas y los informes, pero conserva el historial. Puedes restaurarlo cuando quieras.</p>`;
+}
+
+function catForm(c = {}) {
+  const m = modal(c.id ? 'Editar categoría' : 'Nueva categoría', `
+    <div class="field"><label class="f">Nombre <span class="req">*</span></label><input class="inp" id="cfName" value="${esc(c.name || '')}" placeholder="Ej. Preciadores"></div>
+    <div class="grid2"><div class="field"><label class="f">Grupo <span class="req">*</span></label><select class="inp" id="cfGrupo">${GRUPOS.map(g => `<option ${c.grupo === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
+    <div class="field"><label class="f">Orden</label><input class="inp" id="cfSort" type="number" value="${c.sort ?? (A.cats.length + 1)}"></div></div>`,
+    {footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn" id="cfSave">Guardar</button>`});
+  $('#cfSave', m.el).onclick = async () => {
+    const row = {name: $('#cfName', m.el).value.trim(), grupo: $('#cfGrupo', m.el).value, sort: +$('#cfSort', m.el).value || 0};
+    if (!row.name) return toast('Escribe un nombre', 'bad');
+    try {
+      await q(c.id ? sb.from('categories').update(row).eq('id', c.id) : sb.from('categories').insert(row));
+      m.close(); toast('Categoría guardada', 'ok'); await loadAdmin(); renderAdmin();
+    } catch (e) { toast(/duplicate/.test(e.message) ? 'Ya existe esa categoría en ese grupo' : errMsg(e), 'bad'); }
+  };
+}
+
+function itemForm(it = {}) {
+  const a = A.iadm[it.id] || {};
+  const activeCats = A.cats.filter(c => c.active || c.id === it.category_id);
+  const m = modal(it.id ? 'Editar artículo' : 'Nuevo artículo', `
+    <div class="field"><label class="f">Foto del arte o material</label>
+      <label class="photo-drop"><img id="ifPrev" src="${esc(photoUrl(it.thumb_path))}" alt="" style="${it.thumb_path ? '' : 'visibility:hidden'}">
+      <div><b>Elegir imagen</b><div class="hint">JPG, PNG o WebP. Se optimiza sola a WebP: versión grande para PC y miniatura liviana para celular, respetando su formato (A4, 50×70, horizontal…).</div></div>
+      <input type="file" id="ifFile" accept="image/*" hidden></label></div>
+    <div class="grid2">
+      <div class="field"><label class="f">Nombre <span class="req">*</span></label><input class="inp" id="ifName" value="${esc(it.name || '')}"></div>
+      <div class="field"><label class="f">Categoría <span class="req">*</span></label><select class="inp" id="ifCat">${GRUPOS.map(g => `<optgroup label="${g}">${activeCats.filter(c => c.grupo === g).map(c => `<option value="${c.id}" ${it.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+    </div>
+    <div class="card" style="background:var(--navy-soft);box-shadow:none;padding:14px;margin-bottom:14px">
+      <div class="small" style="font-weight:700;color:var(--navy);margin-bottom:10px">🔒 SOLO ADMIN — no lo ven las tiendas</div>
+      <div class="grid2">
+        <div class="field"><label class="f">Proveedor <span class="req">*</span></label><input class="inp" id="ifSup" value="${esc(a.supplier === 'POR DEFINIR' ? '' : a.supplier || '')}" placeholder="Ej. Imprenta Gráfica Norte"></div>
+        <div class="field"><label class="f">Material <span class="req">*</span></label><input class="inp" id="ifMat" value="${esc(a.material === 'POR DEFINIR' ? '' : a.material || '')}" placeholder="Ej. Couché 150 g / Acrílico 3 mm"></div>
+        <div class="field"><label class="f">Medida <span class="req">*</span></label><input class="inp" id="ifSize" value="${esc(a.size || '')}" placeholder="Ej. A4 (21 x 29.7 cm)"></div>
+        <div class="field"><label class="f">Precio sugerido (S/)</label><input class="inp" id="ifPrice" type="number" step="0.01" min="0" value="${a.suggested_price ?? ''}" placeholder="Opcional"></div>
+        <div class="field"><label class="f">Stock en almacén</label><input class="inp" id="ifStock" type="number" min="0" value="${a.stock ?? 0}"></div>
+        <div class="field"><label class="f">Cantidad por tienda</label><input class="inp" id="ifQty" type="number" min="1" value="${a.qty_per_store ?? 1}"><div class="hint">Cuántas unidades lleva cada tienda.</div></div>
+      </div></div>
+    <div class="field"><label class="f">Orden</label><input class="inp" id="ifSort" type="number" value="${it.sort ?? (A.items.length + 1)}" style="max-width:120px"></div>`,
+    {wide: true, footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="ifSave">Guardar artículo</button>`});
+  let photo = null;
+  $('#ifFile', m.el).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { photo = await optimizeImage(f); const p = $('#ifPrev', m.el); p.src = URL.createObjectURL(photo.thumb); p.style.visibility = 'visible';
+      toast(`Optimizada: ${(f.size / 1024).toFixed(0)} KB → ${(photo.full.size / 1024).toFixed(0)} KB`); }
+    catch { toast('No se pudo leer la imagen', 'bad'); }
+  };
+  $('#ifSave', m.el).onclick = async () => {
+    const v = id => $(id, m.el).value.trim();
+    const base = {name: v('#ifName'), category_id: +v('#ifCat'), sort: +v('#ifSort') || 0};
+    const adm = {supplier: v('#ifSup'), material: v('#ifMat'), size: v('#ifSize'),
+      suggested_price: v('#ifPrice') === '' ? null : +v('#ifPrice'), stock: Math.max(0, +v('#ifStock') || 0), qty_per_store: Math.max(1, +v('#ifQty') || 1)};
+    if (!base.name || !base.category_id) return toast('Nombre y categoría son obligatorios', 'bad');
+    if (!adm.supplier || !adm.material || !adm.size) return toast('Proveedor, material y medida son obligatorios', 'bad');
+    if (!it.id && !photo) return toast('Agrega la foto del artículo', 'bad');
+    const btn = $('#ifSave', m.el); btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      if (photo) {
+        const key = `items/${crypto.randomUUID()}`, ext = photo.full.type === 'image/webp' ? 'webp' : 'jpg';
+        const up = (p, b) => q(sb.storage.from(CONFIG.BUCKET).upload(p, b, {contentType: b.type, cacheControl: '31536000', upsert: false}));
+        await up(`${key}.${ext}`, photo.full); await up(`${key}_t.${ext}`, photo.thumb);
+        const old = [it.photo_path, it.thumb_path].filter(p => p && !p.startsWith('seed/'));
+        Object.assign(base, {photo_path: `${key}.${ext}`, thumb_path: `${key}_t.${ext}`, photo_w: photo.w, photo_h: photo.h});
+        if (old.length) sb.storage.from(CONFIG.BUCKET).remove(old);
+      }
+      let id = it.id;
+      if (id) await q(sb.from('items').update(base).eq('id', id));
+      else id = (await q(sb.from('items').insert(base).select('id').single())).id;
+      await q(sb.from('item_admin').upsert({item_id: id, ...adm}));
+      m.close(); toast('Artículo guardado', 'ok'); await loadAdmin(); renderAdmin();
+    } catch (e) { toast(errMsg(e), 'bad'); btn.disabled = false; btn.textContent = 'Guardar artículo'; }
+  };
+}
+
+document.addEventListener('click', async e => {
+  if ($('#adminView').classList.contains('hidden')) return;
+  const t = e.target, d = s => t.closest(s);
+  if (d('[data-cat-new]')) return catForm();
+  if (d('[data-cat-edit]')) return catForm(A.catById[d('[data-cat-edit]').dataset.catEdit]);
+  if (d('[data-item-new]')) { if (!A.cats.some(c => c.active)) return toast('Primero crea una categoría', 'bad'); return itemForm(); }
+  if (d('[data-item-edit]')) return itemForm(A.itemById[d('[data-item-edit]').dataset.itemEdit]);
+  if (d('[data-lb]')) { const i = A.itemById[d('[data-lb]').dataset.lb]; return lightbox(photoUrl(i.photo_path), i.name); }
+  const toggle = async (table, id, active, what) => {
+    if (!active && !await confirmBox(`Quitar ${what}`, `Dejará de aparecer para las tiendas y en los informes. El historial se conserva y puedes restaurarlo.`, 'Quitar', true)) return;
+    try { await q(sb.from(table).update({active}).eq('id', id)); toast(active ? 'Restaurado' : 'Quitado', 'ok'); await loadAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+  };
+  if (d('[data-cat-off]')) return toggle('categories', d('[data-cat-off]').dataset.catOff, false, 'categoría');
+  if (d('[data-cat-on]')) return toggle('categories', d('[data-cat-on]').dataset.catOn, true);
+  if (d('[data-item-off]')) return toggle('items', d('[data-item-off]').dataset.itemOff, false, 'artículo');
+  if (d('[data-item-on]')) return toggle('items', d('[data-item-on]').dataset.itemOn, true);
+});
+
+/* ---------- Tiendas ---------- */
+function vTiendas() {
+  return `
+  <div class="toolbar"><h2>Tiendas y usuarios</h2>${filtersBar({cat: false})}<button class="btn sm right" data-city-new>+ Ciudad</button><button class="btn amber sm" data-store-new>+ Nueva tienda</button></div>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Código (usuario)</th><th>Tienda</th><th>Ciudad</th><th>Usuario</th><th>Estado</th><th>Último control</th><th></th></tr></thead><tbody>
+  ${reportStoresAll().map(s => `<tr style="${s.active ? '' : 'opacity:.5'}"><td><span class="chip navy">${esc(s.code)}</span></td><td>${esc(s.name)}</td><td>${esc(A.cityById[s.city_id]?.name)}</td>
+    <td>${s.user_id ? '<span class="chip ok">Creado</span>' : '<span class="chip amber">Sin usuario</span>'}</td><td>${s.active ? '<span class="chip ok">Activa</span>' : '<span class="chip">Inactiva</span>'}</td>
+    <td class="small">${A.latest[s.id] ? fmtDT(A.latest[s.id].submitted_at) : '<span class="muted">—</span>'}</td>
+    <td style="white-space:nowrap">${s.user_id ? `<button class="btn ghost xs" data-store-pass="${s.id}">Cambiar contraseña</button>` : `<button class="btn xs" data-store-user="${s.id}">Crear usuario</button>`}
+    <button class="btn ghost xs" data-store-edit="${s.id}">Editar</button>
+    <button class="btn ghost xs" data-store-active="${s.id}">${s.active ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('')}
+  </tbody></table></div>
+  <p class="hint">Las tiendas ingresan con su <b>código</b> (ej. TRU01) y su contraseña. Tú ingresas con tu correo.</p>`;
+}
+function reportStoresAll() {
+  return A.stores.filter(s => !A.filters.city || s.city_id == A.filters.city)
+    .sort((a, b) => (A.cityById[a.city_id].sort - A.cityById[b.city_id].sort) || a.code.localeCompare(b.code));
+}
+async function callFn(body) {
+  const {data, error} = await sb.functions.invoke(CONFIG.FN_TIENDAS, {body});
+  if (error) { let msg = error.message; try { msg = (await error.context.json()).error || msg; } catch {} throw new Error(msg); }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+function storeForm(s = null, mode = 'new') {
+  const isNew = mode === 'new', onlyPass = mode === 'pass', userOnly = mode === 'user';
+  const m = modal(isNew ? 'Nueva tienda' : onlyPass ? `Cambiar contraseña · ${esc(s.code)}` : userOnly ? `Crear usuario · ${esc(s.code)}` : `Editar · ${esc(s.code)}`, `
+    ${onlyPass ? '' : `<div class="grid2">
+      <div class="field"><label class="f">Código de tienda <span class="req">*</span></label><input class="inp" id="sfCode" value="${esc(s?.code || '')}" ${isNew ? '' : 'disabled'} placeholder="Ej. TRU11" style="text-transform:uppercase"><div class="hint">Es el usuario de login. No se puede cambiar después.</div></div>
+      <div class="field"><label class="f">Nombre <span class="req">*</span></label><input class="inp" id="sfName" value="${esc(s?.name || '')}" placeholder="Ej. Tienda Mansiche"></div>
+      <div class="field"><label class="f">Ciudad <span class="req">*</span></label><select class="inp" id="sfCity">${A.cities.map(c => `<option value="${c.id}" ${s?.city_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    </div>`}
+    ${mode === 'edit' ? '' : `<div class="field"><label class="f">Contraseña <span class="req">*</span></label><input class="inp" id="sfPass" type="text" autocomplete="new-password" placeholder="Mínimo 6 caracteres"><div class="hint">Compártela solo con el encargado de la tienda.</div></div>`}`,
+    {footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="sfSave">Guardar</button>`});
+  $('#sfSave', m.el).onclick = async () => {
+    const btn = $('#sfSave', m.el); btn.disabled = true;
+    try {
+      const v = id => $(id, m.el)?.value.trim();
+      if (onlyPass) await callFn({action: 'password', store_id: s.id, password: v('#sfPass')});
+      else if (mode === 'edit') await q(sb.from('stores').update({name: v('#sfName'), city_id: +v('#sfCity')}).eq('id', s.id));
+      else await callFn({action: 'create', code: v('#sfCode'), name: v('#sfName'), city_id: +v('#sfCity'), password: v('#sfPass')});
+      m.close(); toast('Guardado', 'ok'); await loadAdmin(); renderAdmin();
+    } catch (e) { toast(errMsg(e), 'bad'); btn.disabled = false; }
+  };
+}
+document.addEventListener('click', async e => {
+  if ($('#adminView').classList.contains('hidden')) return;
+  const d = s => e.target.closest(s);
+  if (d('[data-store-new]')) return storeForm(null, 'new');
+  if (d('[data-store-user]')) return storeForm(A.storeById[d('[data-store-user]').dataset.storeUser], 'user');
+  if (d('[data-store-pass]')) return storeForm(A.storeById[d('[data-store-pass]').dataset.storePass], 'pass');
+  if (d('[data-store-edit]')) return storeForm(A.storeById[d('[data-store-edit]').dataset.storeEdit], 'edit');
+  if (d('[data-store-active]')) {
+    const s = A.storeById[d('[data-store-active]').dataset.storeActive];
+    if (s.active && !await confirmBox('Desactivar tienda', `${esc(s.name)} no podrá ingresar y saldrá de los informes.`, 'Desactivar', true)) return;
+    try { await callFn({action: 'active', store_id: s.id, active: !s.active}); toast('Listo', 'ok'); await loadAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+  }
+  if (d('[data-city-new]')) {
+    const m = modal('Nueva ciudad', `<div class="field"><label class="f">Nombre</label><input class="inp" id="cnName" placeholder="Ej. Cajamarca"></div>`, {footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn" id="cnSave">Guardar</button>`});
+    $('#cnSave', m.el).onclick = async () => { try { await q(sb.from('cities').insert({name: $('#cnName', m.el).value.trim(), sort: A.cities.length + 1})); m.close(); await loadAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); } };
+  }
+});
+
+/* =====================================================================
+   EXPORTAR A EXCEL (ExcelJS, carga bajo demanda)
+   ===================================================================== */
+async function XL() {
+  if (window.ExcelJS) return window.ExcelJS;
+  await new Promise((res, rej) => { const s = document.createElement('script'); s.src = CONFIG.EXCELJS; s.onload = res; s.onerror = rej; document.head.append(s); });
+  return window.ExcelJS;
+}
+const XFILL = {tiene: 'FFE3F6EC', no_tiene: 'FFFDEAEA', deteriorado: 'FFFFF1D9', en_camino: 'FFE6EEFD', sin_dato: 'FFF3F4F9'};
+const XFONT = {tiene: 'FF17914F', no_tiene: 'FFD63B3B', deteriorado: 'FFD98200', en_camino: 'FF2F68D8', sin_dato: 'FF9AA0B8'};
+const XSYM = {tiene: '✔', no_tiene: '✘', deteriorado: '⚠', en_camino: '➜', sin_dato: '—'};
+function xlSheet(wb, name, title, headers, rows, widths = []) {
+  const ws = wb.addWorksheet(name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31), {views: [{state: 'frozen', ySplit: 4}]});
+  ws.mergeCells(1, 1, 1, Math.max(headers.length, 4));
+  ws.getCell(1, 1).value = `NORAVES · ${title}`;
+  ws.getCell(1, 1).font = {bold: true, size: 14, color: {argb: 'FF23308A'}};
+  ws.getCell(2, 1).value = `Mes: ${periodLabel(A.period)} · Generado: ${fmtDT(new Date())}${A.filters.city ? ' · Ciudad: ' + A.cityById[A.filters.city]?.name : ''}`;
+  ws.getCell(2, 1).font = {size: 10, color: {argb: 'FF6B7090'}};
+  const hr = ws.getRow(4); hr.values = headers; hr.height = 22;
+  hr.eachCell(c => { c.font = {bold: true, color: {argb: 'FFFFFFFF'}}; c.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'FF23308A'}}; c.alignment = {vertical: 'middle', wrapText: true}; });
+  rows.forEach(r => ws.addRow(r));
+  headers.forEach((h, k) => ws.getColumn(k + 1).width = widths[k] || Math.max(10, String(h).length + 2));
+  ws.autoFilter = {from: {row: 4, column: 1}, to: {row: 4, column: headers.length}};
+  return ws;
+}
+function paintStatus(ws, firstRow, colFrom, colTo) {
+  for (let r = firstRow; r <= ws.rowCount; r++) for (let c = colFrom; c <= colTo; c++) {
+    const cell = ws.getCell(r, c), k = Object.keys(XSYM).find(k => XSYM[k] === cell.value || STATUS[k].short === cell.value);
+    if (k) { cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: XFILL[k]}}; cell.font = {bold: true, color: {argb: XFONT[k]}}; cell.alignment = {horizontal: 'center'}; }
+  }
+}
+async function imgToPng(url) {
+  const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url; await img.decode();
+  const s = 120 / img.height, c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = 120;
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/png');
+}
+
+function addRegistros(wb) {
+  const rows = registroRows().map(r => [fmtDate(r.s.submitted_at), fmtTime(r.s.submitted_at), r.st.code, r.st.name, r.city, r.tiene, r.no, r.det, A.latest[r.st.id]?.id === r.s.id ? 'Sí' : 'No', r.s.source === 'importado' ? 'Excel' : 'Tienda', r.s.notes || '']);
+  xlSheet(wb, 'Registros', 'Registro de llenado por tienda', ['Fecha', 'Hora', 'Código', 'Tienda', 'Ciudad', 'Tiene', 'No tiene', 'Deteriorado', 'Vigente', 'Origen', 'Observación'], rows, [12, 8, 10, 28, 12, 8, 10, 12, 9, 9, 40]);
+  const pend = A.stores.filter(s => s.active && !A.latest[s.id]).map(s => [s.code, s.name, A.cityById[s.city_id]?.name]);
+  xlSheet(wb, 'Pendientes', 'Tiendas que no enviaron', ['Código', 'Tienda', 'Ciudad'], pend, [10, 30, 14]);
+}
+async function addMatriz(wb, items, name = 'Matriz', withImgs = true) {
+  const stores = reportStores();
+  const head = ['Ciudad', 'Código', 'Tienda', 'Último envío', ...items.map(i => `${A.catById[i.category_id].name} · ${i.name}`), 'Por reponer'];
+  const rows = stores.filter(s => !A.filters.onlyNeed || items.some(i => needs(cellState(s.id, i.id)))).map(s => {
+    const st = items.map(i => cellState(s.id, i.id));
+    return [A.cityById[s.city_id].name, s.code, s.name, A.latest[s.id] ? fmtDT(A.latest[s.id].submitted_at) : 'Sin envío',
+      ...st.map(c => !A.filters.onlyNeed || needs(c) ? XSYM[c] : ''), st.filter(needs).length];
+  });
+  rows.push(['', '', 'STOCK ALMACÉN', '', ...items.map(i => A.iadm[i.id]?.stock ?? 0), '']);
+  const ws = xlSheet(wb, name, 'Matriz de control de artes y materiales', head, rows, [12, 9, 26, 16, ...items.map(() => 7), 10]);
+  ws.getRow(4).height = 150;
+  for (let k = 5; k <= 4 + items.length; k++) ws.getCell(4, k).alignment = {textRotation: 90, vertical: 'bottom', horizontal: 'center', wrapText: true};
+  paintStatus(ws, 5, 5, 4 + items.length);
+  ws.getCell(5 + rows.length - 1, 3).font = {bold: true};
+  ws.views = [{state: 'frozen', xSplit: 4, ySplit: withImgs ? 5 : 4}];
+  if (withImgs) {   // fila con la foto de cada arte, como el Excel original
+    ws.spliceRows(5, 0, ['', '', 'MODELOS →']); ws.getRow(5).height = 70;
+    for (let k = 0; k < items.length; k++) {
+      try { const b64 = await imgToPng(photoUrl(items[k].thumb_path)); const id = wb.addImage({base64: b64, extension: 'png'});
+        ws.addImage(id, {tl: {col: 4 + k + 0.1, row: 4 + 0.1}, ext: {width: 42, height: 88}}); } catch {}
+    }
+    ws.getRow(5).height = 70;
+  }
+  return ws;
+}
+function addPorTienda(wb) {
+  const rows = [];
+  for (const s of reportStores()) for (const i of reportItems()) {
+    const c = cellState(s.id, i.id);
+    if (needs(c) || (!A.filters.onlyNeed && c === 'en_camino'))
+      rows.push([A.cityById[s.city_id].name, s.code, s.name, A.catById[i.category_id].grupo, A.catById[i.category_id].name, i.name, STATUS[c].short, needs(c) ? qtyPer(i.id) : 0]);
+  }
+  paintStatus(xlSheet(wb, 'Por tienda', 'Faltantes por tienda', ['Ciudad', 'Código', 'Tienda', 'Grupo', 'Categoría', 'Artículo', 'Estado', 'Cant. a enviar'], rows, [12, 9, 26, 12, 20, 32, 13, 12]), 5, 7, 7);
+}
+function addPorCiudad(wb) {
+  const stores = reportStores(), cities = A.cities.filter(c => stores.some(s => s.city_id === c.id));
+  const rows = reportItems().map(i => {
+    const per = cities.map(c => stores.filter(s => s.city_id === c.id && needs(cellState(s.id, i.id))).length * qtyPer(i.id));
+    return [A.catById[i.category_id].grupo, A.catById[i.category_id].name, i.name, ...per, per.reduce((a, b) => a + b, 0), stores.filter(s => cellState(s.id, i.id) === 'en_camino').length];
+  }).filter(r => !A.filters.onlyNeed || r[r.length - 2]);
+  xlSheet(wb, 'Por ciudad', 'Faltantes por ciudad', ['Grupo', 'Categoría', 'Artículo', ...cities.map(c => c.name), 'Total a reponer', 'En camino'], rows, [12, 20, 32, ...cities.map(() => 11), 14, 11]);
+}
+function addTotal(wb) {
+  const rows = itemTotals().filter(t => !A.filters.onlyNeed || t.reponer).map(t => [t.cat.grupo, t.cat.name, t.item.name, t.no_tiene, t.deteriorado, t.reponer, t.en_camino, t.stock, t.pedir, t.adm.supplier || '', t.adm.material || '', t.adm.size || '', t.adm.suggested_price ?? '', t.costo ?? '']);
+  const ws = xlSheet(wb, 'Total', 'Total de faltantes y pedido', ['Grupo', 'Categoría', 'Artículo', 'No tiene', 'Deteriorado', 'A reponer', 'En camino', 'Stock almacén', 'A pedir', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Costo est.'], rows, [12, 20, 32, 10, 12, 11, 11, 13, 10, 24, 20, 18, 12, 12]);
+  [13, 14].forEach(c => ws.getColumn(c).numFmt = '"S/ "#,##0.00');
+}
+function addPedido(wb) {
+  const env = pendingSends().map(r => [A.cityById[r.s.city_id].name, r.s.code, r.s.name, A.catById[r.i.category_id].name, r.i.name, STATUS[r.c].short, r.qty, A.iadm[r.i.id]?.supplier || '', '']);
+  paintStatus(xlSheet(wb, 'Enviar a tiendas', 'Lo que hay que enviar y a qué tienda', ['Ciudad', 'Código', 'Tienda', 'Categoría', 'Artículo', 'Motivo', 'Cantidad', 'Proveedor', 'Enviado (✔)'], env, [12, 9, 26, 20, 32, 13, 10, 24, 12]), 5, 6, 6);
+  const prov = itemTotals().filter(t => t.pedir > 0).sort((a, b) => (a.adm.supplier || '').localeCompare(b.adm.supplier || ''))
+    .map(t => [t.adm.supplier || '', t.cat.name, t.item.name, t.adm.material || '', t.adm.size || '', t.reponer, t.stock, t.pedir, t.adm.suggested_price ?? '', t.costo ?? '']);
+  const ws = xlSheet(wb, 'Pedir al proveedor', 'Pedido a proveedores', ['Proveedor', 'Categoría', 'Artículo', 'Material', 'Medida', 'Necesitan', 'Stock', 'A pedir', 'Precio sug.', 'Subtotal'], prov, [24, 20, 32, 20, 18, 11, 9, 10, 12, 12]);
+  [9, 10].forEach(c => ws.getColumn(c).numFmt = '"S/ "#,##0.00');
+  const open = A.ships.filter(x => x.status === 'en_camino' && A.storeById[x.store_id]).map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s.city_id]?.name, s.code, s.name, A.itemById[x.item_id]?.name, x.qty, x.note || '']; });
+  xlSheet(wb, 'En camino', 'Envíos en camino', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Cant.', 'Nota'], open, [16, 12, 9, 26, 32, 7, 36]);
+}
+function addCatalogo(wb) {
+  const rows = A.items.map(i => { const a = A.iadm[i.id] || {}, c = A.catById[i.category_id]; return [c?.grupo, c?.name, i.name, a.supplier, a.material, a.size, a.suggested_price ?? '', a.stock ?? 0, a.qty_per_store ?? 1, i.active && c?.active ? 'Activo' : 'Quitado']; });
+  xlSheet(wb, 'Catálogo', 'Catálogo de artes y materiales', ['Grupo', 'Categoría', 'Artículo', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Stock', 'x tienda', 'Estado'], rows, [12, 20, 32, 24, 20, 18, 12, 8, 9, 10]).getColumn(7).numFmt = '"S/ "#,##0.00';
+}
+async function download(wb, name) {
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  a.download = `${name}_${A.period.slice(0, 7)}.xlsx`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function exportView(kind) {
+  toast('Generando Excel…');
+  try {
+    const wb = new (await XL()).Workbook(); wb.creator = 'Noraves Marketing';
+    if (kind === 'registros') { addRegistros(wb); return download(wb, 'Noraves_Registros'); }
+    if (kind === 'catalogo') { addCatalogo(wb); return download(wb, 'Noraves_Catalogo'); }
+    if (kind === 'pedido') { addPedido(wb); return download(wb, 'Noraves_Pedido_y_Envio'); }
+    const m = A.filters.mode;
+    if (m === 'matriz') await addMatriz(wb, reportItems()); else if (m === 'tienda') addPorTienda(wb); else if (m === 'ciudad') addPorCiudad(wb); else addTotal(wb);
+    download(wb, 'Noraves_Faltantes_' + m);
+  } catch (e) { toast('No se pudo generar el Excel: ' + errMsg(e), 'bad'); }
+}
+async function exportTodo() {
+  toast('Generando Excel completo…');
+  try {
+    const wb = new (await XL()).Workbook(); wb.creator = 'Noraves Marketing';
+    addRegistros(wb);
+    await addMatriz(wb, reportItems(), 'Matriz general');
+    addPorTienda(wb); addPorCiudad(wb); addTotal(wb); addPedido(wb);
+    for (const c of A.cats.filter(c => c.active)) {      // una hoja por categoría
+      const its = reportItems().filter(i => i.category_id === c.id);
+      if (its.length) await addMatriz(wb, its, `${c.grupo === 'ARTES' ? 'A' : 'M'} · ${c.name}`, false);
+    }
+    addCatalogo(wb);
+    await download(wb, 'Noraves_Control_Tiendas_COMPLETO');
+  } catch (e) { toast('No se pudo generar el Excel: ' + errMsg(e), 'bad'); }
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-x]'); if (b) exportView(b.dataset.x); });
+
+/* ===================================================================== */
+sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') { ME = null; } });
+route();
+</script>
+</body>
+</html>
