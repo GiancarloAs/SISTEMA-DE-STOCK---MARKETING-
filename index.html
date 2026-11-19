@@ -245,11 +245,14 @@ html,body{overflow-x:clip}
   .toolbar h2{width:100%;font-size:18px}
   .toolbar .right{margin-left:0}
   .toolbar select.inp{flex:1 1 140px;width:auto}
-  .tbl-wrap{max-height:none}
+  .tbl-wrap{max-height:calc(100vh - 64px);max-height:calc(100dvh - 64px)}
+  .tbl-wrap table.t tbody td:first-child{position:sticky;left:0;z-index:1;background:#fff}
+  .tbl-wrap table.t thead th:first-child{left:0;z-index:4}
+  .tbl-wrap table.t tr.city td:first-child{background:var(--navy-soft)}
   table.t{font-size:12.5px}
   table.t td,table.t th{white-space:nowrap}
   table.t td.small{white-space:normal;min-width:170px}
-  table.mx th.it-h{white-space:normal}
+  table.mx th.it-h,table.mx td.st{white-space:normal}
   table.t th,table.t td{padding:7px 8px}
   table.mx td.st,table.mx th.st{min-width:128px;max-width:150px;font-size:11.5px}
   .kpis{grid-template-columns:1fr 1fr;gap:8px}
@@ -268,7 +271,10 @@ html,body{overflow-x:clip}
 }
 @media(max-height:500px){
   .top{position:static}
-  .tbl-wrap{max-height:none}
+  .tbl-wrap{max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px)}
+  .tbl-wrap table.t tbody td:first-child{position:sticky;left:0;z-index:1;background:#fff}
+  .tbl-wrap table.t thead th:first-child{left:0;z-index:4}
+  .tbl-wrap table.t tr.city td:first-child{background:var(--navy-soft)}
   .progress,.navbar{top:0}
 }
 @media print{.top,.tabs,.toolbar .btn,.send-bar{display:none!important}}
