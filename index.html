@@ -135,6 +135,14 @@ label.f .req{color:var(--bad)}
 .camp-card .camp-ico{font-size:26px}
 .photo-btn{display:flex;align-items:center;gap:7px;margin-top:6px;border:1.5px dashed var(--line);border-radius:9px;padding:6px 8px;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer}
 .photo-btn img{width:34px;height:34px;object-fit:cover;border-radius:6px;background:#eef0f7}
+.store-pick{border:1.5px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:8px}
+.sp-city{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--navy);padding:2px 0 6px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 12px}
+.sp-item{display:grid;grid-template-columns:auto 46px 1fr;align-items:center;gap:6px;font-size:13px;padding:3px 0;cursor:pointer}
+.sp-item b{color:var(--navy);font-size:12px}
+.sp-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:480px){.sp-grid{grid-template-columns:1fr 1fr}.sp-item{grid-template-columns:auto 1fr}.sp-item b{grid-column:2}.sp-item span{grid-column:2;font-size:12px;margin-top:-4px;white-space:normal}}
+@media(max-width:480px){.modal .mf .btn{flex:1}}
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;max-height:300px;overflow:auto;padding:2px}
 .pick{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:10px;padding:6px 8px;font-size:12.5px;cursor:pointer}
 .pick:has(input:checked){border-color:var(--navy);background:var(--navy-soft)}
@@ -1353,11 +1361,11 @@ function campForm(c = null) {
     <div class="field"><label class="f">Piezas de la campaña <span class="req">*</span> <span class="muted" id="cmItemsN"></span></label>
       <div class="pick-grid">${items.map(i => `<label class="pick"><input type="checkbox" data-cm-item="${i.id}" ${sel.has(i.id) ? 'checked' : ''}><img src="${esc(photoUrl(i.thumb_path))}" alt=""><span>${esc(i.name)}<small>${esc(A.catById[i.category_id].name)}</small></span></label>`).join('')}</div>
       <div class="hint">¿La pieza aún no existe? Créala primero en Catálogo › + Nuevo artículo.</div></div>
-    <div class="field"><label class="f">Tiendas participantes <span class="req">*</span> <span class="muted" id="cmStoresN"></span>
-      <button type="button" class="btn ghost xs" data-cm-all="1">Todas</button> <button type="button" class="btn ghost xs" data-cm-all="0">Ninguna</button></label>
+    <div class="field"><div class="row" style="margin-bottom:6px;gap:8px"><label class="f" style="margin:0">Tiendas participantes <span class="req">*</span> <span class="muted" id="cmStoresN"></span></label>
+      <span class="right row" style="gap:6px"><button type="button" class="btn ghost xs" data-cm-all="1">Todas</button><button type="button" class="btn ghost xs" data-cm-all="0">Ninguna</button></span></div>
       ${A.cities.map(ci => { const ss = A.stores.filter(s => s.city_id === ci.id && s.active); if (!ss.length) return '';
-        return `<div style="margin:8px 0 4px"><label class="row small" style="gap:6px;font-weight:700"><input type="checkbox" data-cm-city="${ci.id}"> ${esc(ci.name)}</label></div>
-        <div class="row" style="gap:6px 14px">${ss.map(s => `<label class="row small" style="gap:5px"><input type="checkbox" data-cm-store="${s.id}" data-city="${ci.id}" ${selS.has(s.id) ? 'checked' : ''}>${esc(s.code)} ${esc(s.name.replace(/^Tienda /, ''))}</label>`).join('')}</div>`; }).join('')}
+        return `<div class="store-pick"><label class="sp-city"><input type="checkbox" data-cm-city="${ci.id}"> ${esc(ci.name)}</label>
+        <div class="sp-grid">${ss.map(s => `<label class="sp-item"><input type="checkbox" data-cm-store="${s.id}" data-city="${ci.id}" ${selS.has(s.id) ? 'checked' : ''}><b>${esc(s.code)}</b><span>${esc(s.name.replace(/^Tienda /, ''))}</span></label>`).join('')}</div></div>`; }).join('')}
     </div>`,
     {wide: true, footer: `${c ? `<button class="btn ghost danger-t" id="cmDel" style="margin-right:auto;color:var(--bad)">Eliminar</button>${c.active ? '<button class="btn ghost" id="cmEndNow">Finalizar ya</button>' : '<button class="btn ghost" id="cmReopen">Reactivar</button>'}` : ''}<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="cmSave">Guardar campaña</button>`});
   const count = () => { $('#cmItemsN', m.el).textContent = `(${$$('[data-cm-item]:checked', m.el).length} elegidas)`; $('#cmStoresN', m.el).textContent = `(${$$('[data-cm-store]:checked', m.el).length} elegidas)`;
