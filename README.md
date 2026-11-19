@@ -38,6 +38,12 @@ Recomendado: Supabase › *Authentication* › *Sign In / Providers* › desacti
 - "Quitar" una categoría o artículo lo oculta sin borrar el historial.
 - Las fotos se optimizan en el navegador a WebP: grande (máx. 1600 px) para PC y miniatura (480 px) para celular. La tarjeta se adapta a la proporción real de cada pieza.
 
+### Campañas
+- Pestaña **Campañas** (admin): crea una campaña con nombre, descripción, fechas, piezas (del Catálogo) y tiendas participantes.
+- Mientras esté vigente, cada tienda participante ve una tarjeta **📣 Campaña** en su inicio y valida cada pieza: **Llegó · Aún no llegó · Llegó dañado**, con **foto opcional** (se guarda privada: solo la ve esa tienda y el admin).
+- El informe muestra quién validó, cuándo, el estado por pieza con sus fotos, y la lista **Por resolver**, donde marcas reenvíos. Esos reenvíos pasan a *En camino* y descuentan stock, igual que en Pedido y envío. Se descarga en Excel con las hojas Resumen, Detalle e Historial.
+- Las piezas de campaña siguen apareciendo en el control mensual.
+
 ### Informes y Excel
 - **Faltantes**: *Matriz* (igual a tu Excel, con las fotos), *Por tienda*, *Por ciudad*, *Total*. Se pueden filtrar por ciudad y por categoría o grupo, y activar **"Solo lo que hay que pedir y enviar"**.
 - Cada vista tiene su botón **⬇ Excel**. **⬇ Excel completo** descarga un libro con: Registros, Pendientes, Matriz general, Por tienda, Por ciudad, Total, Enviar a tiendas, Pedir al proveedor, En camino, una hoja por categoría y Catálogo.
@@ -51,6 +57,7 @@ supabase/01_schema.sql          Tablas, seguridad (RLS), funciones y bucket de f
 supabase/02_seed.sql            Ciudades, tiendas, categorías y artículos iniciales
 supabase/03_importar_estado_excel.sql   Estado del Excel v2 (✔ / vacío / 1)
 supabase/04_hacer_admin.sql     Dar rol admin a un usuario
+supabase/05_campanas.sql        Campañas: tablas, permisos, validación y fotos de evidencia
 supabase/functions/gestionar-tienda/   Crea usuarios de tienda y cambia contraseñas (Edge Function)
 ```
 

@@ -130,6 +130,15 @@ label.f .req{color:var(--bad)}
 .cat-tabs button.send{border-color:var(--amber);color:var(--navy-2)}
 .cat-tabs button.send.on{background:var(--amber);border-color:var(--amber);color:var(--navy-2)}
 .steps{display:grid;gap:10px}
+.camp-card{display:flex;align-items:center;gap:12px;width:100%;border:0;border-radius:var(--r);padding:14px 16px;margin-bottom:12px;color:#fff;background:linear-gradient(120deg,var(--navy) 0%,var(--navy-2) 100%);box-shadow:0 6px 18px rgba(13,17,181,.25)}
+.camp-card .camp-ico{font-size:26px}
+.photo-btn{display:flex;align-items:center;gap:7px;margin-top:6px;border:1.5px dashed var(--line);border-radius:9px;padding:6px 8px;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer}
+.photo-btn img{width:34px;height:34px;object-fit:cover;border-radius:6px;background:#eef0f7}
+.pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;max-height:300px;overflow:auto;padding:2px}
+.pick{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:10px;padding:6px 8px;font-size:12.5px;cursor:pointer}
+.pick:has(input:checked){border-color:var(--navy);background:var(--navy-soft)}
+.pick img{width:30px;height:40px;object-fit:contain;background:#f2f3f8;border-radius:5px;flex:none}
+.pick small{display:block;color:var(--muted);font-size:11px}
 .step-card{display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--line);border-radius:var(--r);padding:12px 14px;box-shadow:var(--sh);width:100%;transition:.15s}
 .step-card:hover{border-color:var(--navy)}
 .step-n{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--navy-soft);color:var(--navy);flex:none}
@@ -265,6 +274,7 @@ table.mx thead th.st{z-index:3;background:#f7f8fc}
     <button data-tab="registros">Registros</button>
     <button data-tab="faltantes">Faltantes</button>
     <button data-tab="pedido">Pedido y envío</button>
+    <button data-tab="campanas">Campañas</button>
     <button data-tab="catalogo">Catálogo</button>
     <button data-tab="tiendas">Tiendas</button>
   </div></nav>
@@ -444,6 +454,7 @@ async function initStore() {
   // solo respuestas de artículos que siguen activos
   Object.keys(ST.answers).forEach(k => { if (!ST.items.find(i => i.id == k)) delete ST.answers[k]; });
   ST.step = 'home';
+  await loadStoreCampaigns();
   $('#stName').textContent = st.name;
   $('#stMeta').textContent = `${st.code} · ${st.cities?.name || ''}`;
   show('storeView');
@@ -472,6 +483,7 @@ function navBar(steps, current) {
 function goStep(step) { ST.step = step; renderStore(); window.scrollTo({top: 0}); $('.cat-tabs .on')?.scrollIntoView({inline: 'center', block: 'nearest'}); }
 
 function renderStore() {
+  if (typeof ST.step === 'string' && ST.step.startsWith('camp:')) return renderCampaign(+ST.step.slice(5));
   const steps = storeSteps();
   const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
   const progress = `<div class="progress"><div class="row small" style="margin-bottom:6px"><b>${done} de ${total} revisados</b><span class="right muted">${total - done ? `Faltan ${total - done}` : '¡Todo revisado!'}</span></div>
@@ -491,6 +503,7 @@ function renderStore() {
     ? `<div class="status-banner ok"><b style="font-size:20px">✓</b><div>Ya enviaste el control de este mes el <b>${fmtDate(last.submitted_at)}</b> a las <b>${fmtTime(last.submitted_at)}</b>.<br><span class="small">Si algo cambió, puedes volver a enviarlo; Marketing verá la versión más reciente.</span></div></div>`
     : `<div class="status-banner pending"><b style="font-size:20px">!</b><div>Aún no envías el control de <b>${esc(periodLabel(ST.period).toLowerCase())}</b>.${last ? '<br><span class="small">Marketing cargó tu último estado desde el Excel. Revísalo y envía tu control actualizado.</span>' : ''}</div></div>`}
   ${enCamino ? `<div class="status-banner" style="background:var(--ship-soft);color:#1d4aa5"><b style="font-size:18px">➜</b><div>Marketing te envió <b>${enCamino}</b> pieza(s) que están <b>en camino</b>. Cuando lleguen, márcalas como "Lo tenemos".</div></div>` : ''}
+  ${campaignCards()}
   ${progress}
   ${ST.prev && !done ? `<div class="row" style="margin:4px 0 14px"><button class="btn ghost sm" id="stPrev">↺ Cargar mis respuestas anteriores (${fmtDate(ST.prev.at)})</button><span class="small muted">Luego corrige solo lo que cambió.</span></div>` : ''}
   <div class="steps">${steps.map((s, k) => {
@@ -619,6 +632,144 @@ async function sendChecklist() {
 }
 
 /* =====================================================================
+   PANEL TIENDA — CAMPAÑAS
+   ===================================================================== */
+const today = () => new Intl.DateTimeFormat('en-CA', {timeZone: CONFIG.TZ}).format(new Date());   // YYYY-MM-DD
+const fmtD = d => d ? d.split('-').reverse().join('/') : '';
+const CSTATUS = {
+  llego:        {label: 'Llegó',          short: 'Llegó',        icon: '✓', cls: 'ok'},
+  no_llego:     {label: 'Aún no llegó',   short: 'No llegó',     icon: '✕', cls: 'bad'},
+  llego_danado: {label: 'Llegó dañado',   short: 'Dañado',       icon: '!', cls: 'warn'},
+};
+const campDraftKey = id => `nv_camp_${ST.store.id}_${id}`;
+
+async function loadStoreCampaigns() {
+  ST.camps = []; ST.campAns = {}; ST.campNotes = {};
+  try {
+    const t = today();
+    const camps = (await q(sb.from('campaigns').select('*').eq('active', true).lte('start_date', t).gte('end_date', t).order('end_date')));
+    if (!camps.length) return;
+    const ids = camps.map(c => c.id);
+    const [ci, subs] = await Promise.all([
+      q(sb.from('campaign_items').select('*').in('campaign_id', ids)),
+      q(sb.from('campaign_submissions').select('*').in('campaign_id', ids).order('submitted_at', {ascending: false})),
+    ]);
+    const itemIds = [...new Set(ci.map(r => r.item_id))];
+    const items = itemIds.length ? await q(sb.from('items').select('*').in('id', itemIds)) : [];
+    const byId = Object.fromEntries(items.map(i => [i.id, i]));
+    for (const c of camps) {
+      c.items = ci.filter(r => r.campaign_id === c.id).map(r => byId[r.item_id]).filter(Boolean).sort((a, b) => a.sort - b.sort);
+      c.last = subs.find(s => s.campaign_id === c.id) || null;
+      const d = store.get(campDraftKey(c.id));
+      ST.campAns[c.id] = d?.answers || {}; ST.campNotes[c.id] = d?.notes || '';
+      if (!d && c.last) {   // precarga lo último que validó
+        const rows = await q(sb.from('campaign_submission_items').select('*').eq('submission_id', c.last.id));
+        rows.forEach(r => ST.campAns[c.id][r.item_id] = {status: r.status, photo: r.photo_path});
+      }
+    }
+    ST.camps = camps.filter(c => c.items.length);
+  } catch (e) { console.error(e); }
+}
+
+function campaignCards() {
+  if (!ST.camps?.length) return '';
+  return ST.camps.map(c => `<button class="camp-card" data-step="camp:${c.id}">
+    <span class="camp-ico">📣</span>
+    <span class="grow" style="text-align:left"><span style="font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--yellow)">CAMPAÑA · HASTA ${fmtD(c.end_date)}</span><br>
+      <b style="font-size:16px">${esc(c.name)}</b><br><span class="small" style="opacity:.85">${c.items.length} pieza(s)</span>
+      ${c.last ? `<span class="chip ok" style="margin-left:6px">✓ Validada ${fmtDate(c.last.submitted_at)}</span>` : '<span class="chip amber" style="margin-left:6px">Pendiente</span>'}</span>
+    <span style="font-size:22px">›</span></button>`).join('');
+}
+
+function saveCampDraft(id) { store.set(campDraftKey(id), {answers: ST.campAns[id], notes: ST.campNotes[id]}); }
+
+function renderCampaign(id) {
+  const c = ST.camps.find(x => x.id === id); if (!c) return goStep('home');
+  const ans = ST.campAns[c.id], done = c.items.filter(i => ans[i.id]?.status).length;
+  $('#storeMain').innerHTML = `
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost sm" data-step="home">← Inicio</button><span class="right chip amber">Campaña hasta ${fmtD(c.end_date)}</span></div>
+  <div class="small muted" style="letter-spacing:.1em;font-weight:700">📣 VALIDACIÓN DE CAMPAÑA</div>
+  <h2 style="margin:0 0 4px">${esc(c.name)}</h2>
+  ${c.description ? `<p class="muted small" style="margin:0 0 8px">${esc(c.description)}</p>` : ''}
+  ${c.last ? `<div class="status-banner ok"><b>✓</b><div>Validaste esta campaña el <b>${fmtDT(c.last.submitted_at)}</b>. Si algo cambió (por ejemplo, llegó lo que faltaba), corrígelo y vuelve a enviar.</div></div>` : ''}
+  <p class="small muted">Marca si cada pieza llegó a tu tienda. Si quieres, agrega una foto de cómo quedó instalada.</p>
+  <div class="items-grid">${c.items.map(i => campItemCard(c, i)).join('')}</div>
+  <div class="card" style="margin-top:16px"><label class="f" for="cpNotes">Observaciones (opcional)</label>
+    <textarea id="cpNotes" data-camp="${c.id}" class="inp" rows="2" placeholder="Ej. el afiche llegó doblado, falta el acrílico…">${esc(ST.campNotes[c.id])}</textarea></div>
+  <div class="send-bar"><div class="in">
+    <div class="small grow">${done === c.items.length ? '<b style="color:var(--ok)">Todo validado ✓</b>' : `<b>${c.items.length - done}</b> por validar`}</div>
+    <button class="btn amber" id="cpSend" data-camp="${c.id}" ${done === c.items.length ? '' : 'disabled'}>Enviar validación</button>
+  </div></div>`;
+  // previsualiza fotos ya subidas (bucket privado → enlace temporal)
+  $$('[data-cphoto]').forEach(async img => {
+    const p = img.dataset.cphoto; if (!p || img.getAttribute('src')) return;
+    const {data} = await sb.storage.from('evidencias').createSignedUrl(p, 3600); if (data) img.src = data.signedUrl;
+  });
+}
+
+function campItemCard(c, it) {
+  const a = ST.campAns[c.id][it.id] || {};
+  const ratio = it.photo_w && it.photo_h ? Math.min(Math.max(it.photo_w / it.photo_h, 0.55), 1.9) : 0.75;
+  const cls = a.status === 'llego' ? 's-tiene' : a.status === 'no_llego' ? 's-no_tiene' : a.status === 'llego_danado' ? 's-deteriorado' : '';
+  return `<div class="it ${cls}">
+    <div class="ph" style="aspect-ratio:${ratio}" data-zoom="${it.id}" data-zcamp="${c.id}">${it.thumb_path ? `<img loading="lazy" src="${esc(photoUrl(it.thumb_path))}" alt="">` : '<span class="noimg">Sin foto</span>'}</div>
+    <div class="body"><div class="name">${esc(it.name)}<div class="small muted" style="font-weight:500">${esc(ST.cats.find(x => x.id === it.category_id)?.name || '')}</div></div>
+      <div class="ans cans">${Object.entries(CSTATUS).map(([k, s]) =>
+        `<button type="button" data-citem="${it.id}" data-camp="${c.id}" data-s="${k === 'llego' ? 'tiene' : k === 'no_llego' ? 'no_tiene' : 'deteriorado'}" data-cs="${k}" class="${a.status === k ? 'on' : ''}"><span class="dot">${s.icon}</span>${s.label}</button>`).join('')}</div>
+      <label class="photo-btn">${a.photo ? `<img data-cphoto="${esc(a.photo)}" ${ST.campPrev?.[a.photo] ? `src="${ST.campPrev[a.photo]}"` : ''} alt="">` : '📷'} <span>${a.photo ? 'Cambiar foto' : 'Agregar foto (opcional)'}</span>
+        <input type="file" accept="image/*" capture="environment" hidden data-cfile="${it.id}" data-camp="${c.id}"></label>
+      ${a.photo ? `<button class="btn ghost xs" style="margin-top:4px" data-cphoto-del="${it.id}" data-camp="${c.id}">Quitar foto</button>` : ''}
+    </div></div>`;
+}
+
+document.addEventListener('click', async e => {
+  if (!ST.store || $('#storeView').classList.contains('hidden')) return;
+  const b = e.target.closest('.cans button');
+  if (b) {
+    e.stopImmediatePropagation();
+    const cid = +b.dataset.camp; (ST.campAns[cid][b.dataset.citem] ||= {}).status = b.dataset.cs; saveCampDraft(cid);
+    const y = window.scrollY; renderStore(); window.scrollTo(0, y); return;
+  }
+  const zc = e.target.closest('[data-zcamp]');
+  if (zc) { e.stopImmediatePropagation(); const it = ST.camps.find(c => c.id == zc.dataset.zcamp)?.items.find(i => i.id == zc.dataset.zoom); if (it?.photo_path) lightbox(photoUrl(it.photo_path), it.name); return; }
+  const del = e.target.closest('[data-cphoto-del]');
+  if (del) { const cid = +del.dataset.camp; delete ST.campAns[cid][del.dataset.cphotoDel].photo; saveCampDraft(cid); renderStore(); return; }
+  if (e.target.closest('#cpSend')) sendCampaign(+e.target.closest('#cpSend').dataset.camp);
+}, true);
+document.addEventListener('change', async e => {
+  const f = e.target.closest('[data-cfile]'); if (!f || !f.files[0]) return;
+  const cid = +f.dataset.camp, iid = f.dataset.cfile, lbl = f.closest('.photo-btn');
+  lbl.querySelector('span').textContent = 'Subiendo foto…';
+  try {
+    const ph = await optimizeImage(f.files[0]);
+    const ext = ph.full.type === 'image/webp' ? 'webp' : 'jpg';
+    const path = `${ST.store.id}/${cid}/${crypto.randomUUID()}.${ext}`;
+    await q(sb.storage.from('evidencias').upload(path, ph.full, {contentType: ph.full.type, upsert: false}));
+    (ST.campAns[cid][iid] ||= {}).photo = path; saveCampDraft(cid);
+    (ST.campPrev ||= {})[path] = URL.createObjectURL(ph.thumb);
+    toast('Foto agregada ✓', 'ok'); const y = window.scrollY; renderStore(); window.scrollTo(0, y);
+  } catch (er) { toast('No se pudo subir la foto: ' + errMsg(er), 'bad'); lbl.querySelector('span').textContent = 'Agregar foto (opcional)'; }
+});
+document.addEventListener('input', e => { if (e.target.id === 'cpNotes') { const cid = +e.target.dataset.camp; ST.campNotes[cid] = e.target.value; saveCampDraft(cid); } });
+
+async function sendCampaign(cid) {
+  const c = ST.camps.find(x => x.id === cid), ans = ST.campAns[cid];
+  const n = k => c.items.filter(i => ans[i.id]?.status === k).length;
+  const ok = await confirmBox('¿Enviar validación?', `<p>Campaña <b>${esc(c.name)}</b> · ${esc(ST.store.name)}</p>
+    <div class="sum3"><div class="c-tiene"><b>${n('llego')}</b>Llegó</div><div class="c-no_tiene"><b>${n('no_llego')}</b>Aún no llegó</div><div class="c-deteriorado"><b>${n('llego_danado')}</b>Llegó dañado</div></div>
+    <p class="small muted">${c.items.filter(i => ans[i.id]?.photo).length} foto(s) adjunta(s). Se registrará la fecha y hora.</p>`, 'Enviar');
+  if (!ok) return;
+  const btn = $('#cpSend'); btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const payload = {}; c.items.forEach(i => payload[i.id] = {status: ans[i.id].status, photo: ans[i.id].photo || null});
+    const r = await q(sb.rpc('submit_campaign', {p_campaign: cid, p_answers: payload, p_notes: ST.campNotes[cid] || null}));
+    store.del(campDraftKey(cid));
+    modal('¡Validación enviada! ✓', `<p style="font-size:15px">Campaña <b>${esc(c.name)}</b> validada el <b>${fmtDate(r.submitted_at)}</b> a las <b>${fmtTime(r.submitted_at)}</b>.</p>`, {footer: '<button class="btn" data-close>Listo</button>'});
+    await loadStoreCampaigns(); goStep('home');
+  } catch (er) { toast('No se pudo enviar: ' + errMsg(er), 'bad'); btn.disabled = false; btn.textContent = 'Enviar validación'; }
+}
+
+/* =====================================================================
    PANEL ADMIN — datos
    ===================================================================== */
 const A = {tab: 'resumen', period: currentPeriod(), view: {}, filters: {city: '', cat: '', onlyNeed: false, mode: 'matriz'}};
@@ -626,7 +777,7 @@ const A = {tab: 'resumen', period: currentPeriod(), view: {}, filters: {city: ''
 async function initAdmin() {
   show('adminView');
   $('#adMonth').value = A.period.slice(0, 7);
-  await loadAdmin();
+  await Promise.all([loadAdmin(), loadCampaignsAdmin()]);
   renderAdmin();
 }
 $('#adMonth').addEventListener('change', async e => {
@@ -719,7 +870,7 @@ document.addEventListener('change', e => {
 });
 
 function renderAdmin() {
-  const fn = {resumen: vResumen, registros: vRegistros, faltantes: vFaltantes, pedido: vPedido, catalogo: vCatalogo, tiendas: vTiendas}[A.tab];
+  const fn = {resumen: vResumen, registros: vRegistros, faltantes: vFaltantes, pedido: vPedido, campanas: vCampanas, catalogo: vCatalogo, tiendas: vTiendas}[A.tab];
   $('#adMain').innerHTML = fn();
 }
 
@@ -1046,6 +1197,197 @@ document.addEventListener('click', async e => {
   if (d('[data-item-off]')) return toggle('items', d('[data-item-off]').dataset.itemOff, false, 'artículo');
   if (d('[data-item-on]')) return toggle('items', d('[data-item-on]').dataset.itemOn, true);
 });
+
+/* ---------- Campañas (admin) ---------- */
+const CSTATUS_X = {llego: '✔', no_llego: '✘', llego_danado: '⚠'};
+async function loadCampaignsAdmin() {
+  const [camps, ci, cs, subs] = await Promise.all([
+    q(sb.from('campaigns').select('*').order('start_date', {ascending: false})),
+    fetchAll(() => sb.from('campaign_items').select('*')),
+    fetchAll(() => sb.from('campaign_stores').select('*')),
+    fetchAll(() => sb.from('campaign_submissions').select('*').order('submitted_at', {ascending: false})),
+  ]);
+  const cItems = {};
+  for (const ids of chunk(subs.map(s => s.id), 150)) {
+    const rows = await fetchAll(() => sb.from('campaign_submission_items').select('*').in('submission_id', ids));
+    rows.forEach(r => (cItems[r.submission_id] ||= {})[r.item_id] = r);
+  }
+  camps.forEach(c => {
+    c.itemIds = ci.filter(r => r.campaign_id === c.id).map(r => r.item_id);
+    c.storeIds = cs.filter(r => r.campaign_id === c.id).map(r => r.store_id);
+    c.subs = subs.filter(s => s.campaign_id === c.id);
+    c.latest = {}; c.subs.forEach(s => { if (!c.latest[s.store_id]) c.latest[s.store_id] = s; });
+  });
+  Object.assign(A, {camps, cItems});
+}
+function campState(c) {
+  const t = today();
+  if (!c.active || c.end_date < t) return {label: 'Finalizada', cls: ''};
+  if (c.start_date > t) return {label: 'Programada', cls: 'navy'};
+  return {label: 'Activa', cls: 'ok'};
+}
+function campCell(c, storeId, itemId) { const s = c.latest[storeId]; return s ? A.cItems[s.id]?.[itemId] || null : null; }
+
+function vCampanas() {
+  if (A.campSel) { const c = A.camps.find(x => x.id === A.campSel); if (c) return vCampanaDetalle(c); A.campSel = null; }
+  return `
+  <div class="toolbar"><h2>Campañas</h2><span class="muted small">Validación de los artes enviados para una campaña específica.</span><button class="btn amber sm right" data-camp-new>+ Nueva campaña</button></div>
+  ${A.camps.length ? `<div class="tbl-wrap"><table class="t"><thead><tr><th>Campaña</th><th>Vigencia</th><th>Estado</th><th class="num">Piezas</th><th>Validaron</th><th class="num">Problemas</th><th></th></tr></thead><tbody>
+  ${A.camps.map(c => { const st = campState(c), n = c.storeIds.filter(s => c.latest[s]).length;
+    let prob = 0; c.storeIds.forEach(s => c.itemIds.forEach(i => { const x = campCell(c, s, i); if (x && x.status !== 'llego') prob++; }));
+    return `<tr><td><b>${esc(c.name)}</b>${c.description ? `<div class="small muted">${esc(c.description)}</div>` : ''}</td><td class="small">${fmtD(c.start_date)} → ${fmtD(c.end_date)}</td>
+      <td><span class="chip ${st.cls}">${st.label}</span></td><td class="num">${c.itemIds.length}</td>
+      <td style="min-width:150px"><div class="small"><b>${n}</b>/${c.storeIds.length} tiendas</div><div class="pbar" style="height:6px"><i style="width:${c.storeIds.length ? n / c.storeIds.length * 100 : 0}%"></i></div></td>
+      <td class="num" style="color:${prob ? 'var(--bad)' : 'var(--muted)'}"><b>${prob}</b></td>
+      <td style="white-space:nowrap"><button class="btn xs" data-camp-open="${c.id}">Ver informe</button> <button class="btn ghost xs" data-camp-edit="${c.id}">Editar</button></td></tr>`; }).join('')}
+  </tbody></table></div>` : `<div class="card empty">Aún no hay campañas.<br><br><button class="btn amber" data-camp-new>+ Crear la primera campaña</button></div>`}
+  <p class="hint">Las piezas de campaña se eligen del Catálogo (primero súbelas ahí). Siguen apareciendo en el control mensual; además, mientras la campaña está activa, las tiendas participantes ven una tarjeta para validarla.</p>`;
+}
+
+function vCampanaDetalle(c) {
+  const st = campState(c);
+  const stores = c.storeIds.map(id => A.storeById[id]).filter(Boolean).filter(s => !A.filters.city || s.city_id == A.filters.city)
+    .sort((a, b) => (A.cityById[a.city_id].sort - A.cityById[b.city_id].sort) || a.code.localeCompare(b.code));
+  const items = c.itemIds.map(id => A.itemById[id]).filter(Boolean).sort((a, b) => a.sort - b.sort);
+  const cnt = {llego: 0, no_llego: 0, llego_danado: 0};
+  stores.forEach(s => items.forEach(i => { const x = campCell(c, s.id, i.id); if (x) cnt[x.status]++; }));
+  const done = stores.filter(s => c.latest[s.id]), pend = stores.filter(s => !c.latest[s.id]);
+  const probs = [];
+  stores.forEach(s => items.forEach(i => { const x = campCell(c, s.id, i.id); if (x && x.status !== 'llego') probs.push({s, i, x}); }));
+  let lastCity = null;
+  return `
+  <div class="toolbar"><button class="btn ghost sm" data-camp-back>← Campañas</button><h2>${esc(c.name)}</h2><span class="chip ${st.cls}">${st.label}</span><span class="small muted">${fmtD(c.start_date)} → ${fmtD(c.end_date)}</span>
+    ${filtersBar({cat: false})}<button class="btn ghost sm right" data-camp-edit="${c.id}">Editar</button><button class="btn sm" data-camp-x="${c.id}">⬇ Excel</button></div>
+  <div class="kpis">
+    <div class="kpi"><div class="v">${done.length}<span class="muted" style="font-size:16px">/${stores.length}</span></div><div class="l">Tiendas que validaron</div></div>
+    <div class="kpi ok"><div class="v">${cnt.llego}</div><div class="l">Piezas que llegaron</div></div>
+    <div class="kpi bad"><div class="v">${cnt.no_llego}</div><div class="l">Aún no llegan</div></div>
+    <div class="kpi warn"><div class="v">${cnt.llego_danado}</div><div class="l">Llegaron dañadas</div></div>
+  </div>
+  <div class="legend" style="margin-bottom:10px">${Object.entries(CSTATUS).map(([k, s]) => `<span class="chip ${s.cls}">${s.icon} ${s.short}</span>`).join('')}<span class="chip">📷 tiene foto (clic para ver)</span></div>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Tienda</th><th>Validó</th>${items.map(i => `<th style="text-align:center;min-width:90px"><img class="thumb" src="${esc(photoUrl(i.thumb_path))}" alt=""><div style="text-transform:none;letter-spacing:0;font-size:11px;white-space:normal;color:var(--ink)">${esc(i.name)}<div class="muted" style="font-weight:500">${esc(A.catById[i.category_id]?.name || '')}</div></div></th>`).join('')}<th>Obs.</th></tr></thead><tbody>
+  ${stores.map(s => { const sub = c.latest[s.id]; let row = '';
+    if (s.city_id !== lastCity) { lastCity = s.city_id; row += `<tr class="city"><td colspan="${items.length + 3}">${esc(A.cityById[s.city_id].name)}</td></tr>`; }
+    return row + `<tr><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td class="small">${sub ? fmtDT(sub.submitted_at) : '<span class="chip amber">Pendiente</span>'}</td>
+      ${items.map(i => { const x = campCell(c, s.id, i.id); if (!x) return '<td class="c c-sin_dato" style="text-align:center">·</td>';
+        const m = CSTATUS[x.status], ship = A.openShip[s.id + ':' + i.id];
+        return `<td style="text-align:center"><span class="chip ${m.cls}">${m.icon} ${m.short}</span>${x.photo_path ? ` <button class="btn ghost xs" data-ev="${esc(x.photo_path)}" data-evcap="${esc(s.name + ' · ' + i.name)}">📷</button>` : ''}${ship && x.status !== 'llego' ? '<div class="small" style="color:var(--ship)">➜ reenviado</div>' : ''}</td>`; }).join('')}
+      <td class="small">${esc(sub?.notes || '')}</td></tr>`; }).join('')}
+  </tbody></table></div>
+  ${pend.length ? `<div class="card" style="margin-top:14px"><b>Falta validar (${pend.length}):</b> <span class="small">${pend.map(s => `${esc(s.code)} ${esc(s.name)}`).join(' · ')}</span></div>` : ''}
+  ${probs.length ? `<div class="store-block" style="margin-top:14px"><div class="hd"><h3>Por resolver</h3><span class="small muted">Piezas que no llegaron o llegaron dañadas</span>
+      <button class="btn ok sm right" data-camp-reship="all">✓ Marcar todo como reenviado</button></div>
+    ${probs.map(p => { const ship = A.openShip[p.s.id + ':' + p.i.id]; return `<div class="need-row"><img class="thumb" src="${esc(photoUrl(p.i.thumb_path))}" alt="">
+      <div class="grow">${esc(p.i.name)}<div class="small muted">${esc(p.s.code)} · ${esc(p.s.name)} · Stock almacén: ${A.iadm[p.i.id]?.stock ?? 0}</div></div>
+      <span class="chip ${CSTATUS[p.x.status].cls}">${CSTATUS[p.x.status].short}</span>
+      ${ship ? '<span class="chip ship">➜ En camino</span>' : `<button class="btn ghost sm" data-camp-reship="${p.s.id}:${p.i.id}">Reenviado</button>`}</div>`; }).join('')}</div>` : ''}`;
+}
+
+function campForm(c = null) {
+  const sel = new Set(c?.itemIds || []), selS = new Set(c ? c.storeIds : A.stores.filter(s => s.active).map(s => s.id));
+  const items = A.items.filter(i => i.active && A.catById[i.category_id]?.active)
+    .sort((a, b) => (A.catById[a.category_id].sort - A.catById[b.category_id].sort) || a.sort - b.sort);
+  const t = today();
+  const m = modal(c ? 'Editar campaña' : 'Nueva campaña', `
+    <div class="field"><label class="f">Nombre <span class="req">*</span></label><input class="inp" id="cmName" value="${esc(c?.name || '')}" placeholder="Ej. Navidad 2026"></div>
+    <div class="field"><label class="f">Descripción para las tiendas</label><input class="inp" id="cmDesc" value="${esc(c?.description || '')}" placeholder="Ej. Afiche 50x70 en vitrina principal y A4 en caja"></div>
+    <div class="grid2"><div class="field"><label class="f">Inicio <span class="req">*</span></label><input class="inp" type="date" id="cmStart" value="${c?.start_date || t}"></div>
+      <div class="field"><label class="f">Fin <span class="req">*</span></label><input class="inp" type="date" id="cmEnd" value="${c?.end_date || ''}"></div></div>
+    <div class="field"><label class="f">Piezas de la campaña <span class="req">*</span> <span class="muted" id="cmItemsN"></span></label>
+      <div class="pick-grid">${items.map(i => `<label class="pick"><input type="checkbox" data-cm-item="${i.id}" ${sel.has(i.id) ? 'checked' : ''}><img src="${esc(photoUrl(i.thumb_path))}" alt=""><span>${esc(i.name)}<small>${esc(A.catById[i.category_id].name)}</small></span></label>`).join('')}</div>
+      <div class="hint">¿La pieza aún no existe? Créala primero en Catálogo › + Nuevo artículo.</div></div>
+    <div class="field"><label class="f">Tiendas participantes <span class="req">*</span> <span class="muted" id="cmStoresN"></span>
+      <button type="button" class="btn ghost xs" data-cm-all="1">Todas</button> <button type="button" class="btn ghost xs" data-cm-all="0">Ninguna</button></label>
+      ${A.cities.map(ci => { const ss = A.stores.filter(s => s.city_id === ci.id && s.active); if (!ss.length) return '';
+        return `<div style="margin:8px 0 4px"><label class="row small" style="gap:6px;font-weight:700"><input type="checkbox" data-cm-city="${ci.id}"> ${esc(ci.name)}</label></div>
+        <div class="row" style="gap:6px 14px">${ss.map(s => `<label class="row small" style="gap:5px"><input type="checkbox" data-cm-store="${s.id}" data-city="${ci.id}" ${selS.has(s.id) ? 'checked' : ''}>${esc(s.code)} ${esc(s.name.replace(/^Tienda /, ''))}</label>`).join('')}</div>`; }).join('')}
+    </div>`,
+    {wide: true, footer: `${c ? `<button class="btn ghost danger-t" id="cmDel" style="margin-right:auto;color:var(--bad)">Eliminar</button>${c.active ? '<button class="btn ghost" id="cmEndNow">Finalizar ya</button>' : '<button class="btn ghost" id="cmReopen">Reactivar</button>'}` : ''}<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="cmSave">Guardar campaña</button>`});
+  const count = () => { $('#cmItemsN', m.el).textContent = `(${$$('[data-cm-item]:checked', m.el).length} elegidas)`; $('#cmStoresN', m.el).textContent = `(${$$('[data-cm-store]:checked', m.el).length} elegidas)`;
+    $$('[data-cm-city]', m.el).forEach(cb => { const all = $$(`[data-cm-store][data-city="${cb.dataset.cmCity}"]`, m.el); cb.checked = all.every(x => x.checked); }); };
+  count();
+  m.el.addEventListener('change', e => {
+    if (e.target.dataset.cmCity) $$(`[data-cm-store][data-city="${e.target.dataset.cmCity}"]`, m.el).forEach(x => x.checked = e.target.checked);
+    count();
+  });
+  m.el.addEventListener('click', async e => {
+    const all = e.target.closest('[data-cm-all]'); if (all) { $$('[data-cm-store]', m.el).forEach(x => x.checked = all.dataset.cmAll === '1'); count(); }
+    if (e.target.closest('#cmEndNow') || e.target.closest('#cmReopen')) {
+      try { await q(sb.from('campaigns').update({active: !!e.target.closest('#cmReopen')}).eq('id', c.id)); m.close(); toast('Listo', 'ok'); await loadCampaignsAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+    }
+    if (e.target.closest('#cmDel')) {
+      if (!await confirmBox('Eliminar campaña', `Se borrará <b>${esc(c.name)}</b> y todas las validaciones que enviaron las tiendas. No se puede deshacer.`, 'Eliminar', true)) return;
+      try { await q(sb.from('campaigns').delete().eq('id', c.id)); m.close(); A.campSel = null; toast('Campaña eliminada', 'ok'); await loadCampaignsAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+    }
+    if (e.target.closest('#cmSave')) {
+      const row = {name: $('#cmName', m.el).value.trim(), description: $('#cmDesc', m.el).value.trim() || null, start_date: $('#cmStart', m.el).value, end_date: $('#cmEnd', m.el).value};
+      const its = $$('[data-cm-item]:checked', m.el).map(x => +x.dataset.cmItem), sts = $$('[data-cm-store]:checked', m.el).map(x => +x.dataset.cmStore);
+      if (!row.name || !row.start_date || !row.end_date) return toast('Completa nombre y fechas', 'bad');
+      if (row.end_date < row.start_date) return toast('La fecha fin debe ser posterior al inicio', 'bad');
+      if (!its.length || !sts.length) return toast('Elige al menos una pieza y una tienda', 'bad');
+      const btn = $('#cmSave', m.el); btn.disabled = true;
+      try {
+        let id = c?.id;
+        if (id) await q(sb.from('campaigns').update(row).eq('id', id));
+        else id = (await q(sb.from('campaigns').insert(row).select('id').single())).id;
+        await q(sb.from('campaign_items').delete().eq('campaign_id', id));
+        await q(sb.from('campaign_stores').delete().eq('campaign_id', id));
+        await q(sb.from('campaign_items').insert(its.map(item_id => ({campaign_id: id, item_id}))));
+        await q(sb.from('campaign_stores').insert(sts.map(store_id => ({campaign_id: id, store_id}))));
+        m.close(); toast('Campaña guardada', 'ok'); await loadCampaignsAdmin(); A.campSel = id; renderAdmin();
+      } catch (er) { toast(errMsg(er), 'bad'); btn.disabled = false; }
+    }
+  });
+}
+
+document.addEventListener('click', async e => {
+  if ($('#adminView').classList.contains('hidden')) return;
+  const d = s => e.target.closest(s);
+  if (d('[data-camp-new]')) return campForm();
+  if (d('[data-camp-edit]')) return campForm(A.camps.find(c => c.id == d('[data-camp-edit]').dataset.campEdit));
+  if (d('[data-camp-open]')) { A.campSel = +d('[data-camp-open]').dataset.campOpen; return renderAdmin(); }
+  if (d('[data-camp-back]')) { A.campSel = null; return renderAdmin(); }
+  if (d('[data-ev]')) {
+    const b = d('[data-ev]'); const {data, error} = await sb.storage.from('evidencias').createSignedUrl(b.dataset.ev, 600);
+    if (error) return toast(errMsg(error), 'bad'); return lightbox(data.signedUrl, b.dataset.evcap);
+  }
+  if (d('[data-camp-x]')) return exportCampaign(A.camps.find(c => c.id == d('[data-camp-x]').dataset.campX));
+  const rs = d('[data-camp-reship]');
+  if (rs) {
+    const c = A.camps.find(x => x.id === A.campSel); let rows;
+    if (rs.dataset.campReship === 'all') {
+      rows = []; c.storeIds.forEach(s => c.itemIds.forEach(i => { const x = campCell(c, s, i); if (x && x.status !== 'llego' && !A.openShip[s + ':' + i]) rows.push({store_id: s, item_id: i, qty: qtyPer(i)}); }));
+    } else { const [s, i] = rs.dataset.campReship.split(':').map(Number); rows = [{store_id: s, item_id: i, qty: qtyPer(i)}]; }
+    if (!rows.length) return toast('No hay nada pendiente de reenviar');
+    if (!await confirmBox('Marcar como reenviado', `Se marcarán <b>${rows.length}</b> pieza(s) como <b>En camino</b> (se descuentan del stock). La tienda las verá en su panel.`, 'Marcar reenviado')) return;
+    try { await q(sb.rpc('mark_shipped', {p_rows: rows, p_note: `Reenvío campaña: ${c.name}`})); toast('Reenvío registrado', 'ok'); await loadAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+  }
+});
+
+async function exportCampaign(c) {
+  toast('Generando Excel…');
+  try {
+    const wb = new (await XL()).Workbook(); wb.creator = 'Noraves Marketing';
+    const stores = c.storeIds.map(id => A.storeById[id]).filter(Boolean).sort((a, b) => (A.cityById[a.city_id].sort - A.cityById[b.city_id].sort) || a.code.localeCompare(b.code));
+    const items = c.itemIds.map(id => A.itemById[id]).filter(Boolean).sort((a, b) => a.sort - b.sort);
+    const ttl = `Campaña ${c.name} (${fmtD(c.start_date)} – ${fmtD(c.end_date)})`;
+    const rows = stores.map(s => { const sub = c.latest[s.id];
+      return [A.cityById[s.city_id].name, s.code, s.name, sub ? fmtDT(sub.submitted_at) : 'Pendiente', ...items.map(i => { const x = campCell(c, s.id, i.id); return x ? CSTATUS_X[x.status] : '—'; }), sub?.notes || '']; });
+    const ws = xlSheet(wb, 'Resumen campaña', ttl, ['Ciudad', 'Código', 'Tienda', 'Validó', ...items.map(i => `${i.name} (${A.catById[i.category_id]?.name || ''})`), 'Observación'], rows, [12, 9, 26, 16, ...items.map(() => 14), 36]);
+    for (let r = 5; r <= ws.rowCount; r++) for (let k = 5; k < 5 + items.length; k++) {
+      const cell = ws.getCell(r, k), key = {'✔': 'tiene', '✘': 'no_tiene', '⚠': 'deteriorado'}[cell.value];
+      if (key) { cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: XFILL[key]}}; cell.font = {bold: true, color: {argb: XFONT[key]}}; } cell.alignment = {horizontal: 'center'};
+    }
+    const det = [];
+    stores.forEach(s => items.forEach(i => { const x = campCell(c, s.id, i.id);
+      det.push([A.cityById[s.city_id].name, s.code, s.name, `${i.name} (${A.catById[i.category_id]?.name || ''})`, x ? CSTATUS[x.status].label : 'Sin validar', x?.photo_path ? 'Sí' : 'No', c.latest[s.id] ? fmtDT(c.latest[s.id].submitted_at) : '', A.openShip[s.id + ':' + i.id] ? 'En camino' : '']); }));
+    xlSheet(wb, 'Detalle', ttl, ['Ciudad', 'Código', 'Tienda', 'Pieza', 'Estado', 'Foto', 'Fecha validación', 'Reenvío'], det, [12, 9, 26, 32, 14, 7, 16, 11]);
+    const hist = c.subs.map(s => [fmtDate(s.submitted_at), fmtTime(s.submitted_at), A.storeById[s.store_id]?.code, A.storeById[s.store_id]?.name, s.notes || '']);
+    xlSheet(wb, 'Historial', ttl, ['Fecha', 'Hora', 'Código', 'Tienda', 'Observación'], hist, [12, 8, 9, 26, 40]);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([await wb.xlsx.writeBuffer()], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    a.download = `Noraves_Campana_${c.name.replace(/[^\w]+/g, '_')}.xlsx`; a.click();
+  } catch (e) { toast('No se pudo generar el Excel: ' + errMsg(e), 'bad'); }
+}
 
 /* ---------- Tiendas ---------- */
 function vTiendas() {
