@@ -225,6 +225,10 @@ table.mx thead th.st{position:sticky;left:0;z-index:4;background:#f7f8fc}
 .sum3 div b{display:block;font-size:26px}
 /* ---------- celular ---------- */
 html,body{overflow-x:clip}
+@supports not (overflow-x:clip){html,body{overflow-x:hidden}}
+.x-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-left:-18px;margin-right:-18px;padding:0 18px}
+.card{min-width:0}
+.grid2>*{min-width:0}
 @media(max-width:760px){
   body{font-size:14px}
   .wrap{padding:12px}
@@ -938,17 +942,17 @@ function vResumen() {
   ${incomplete ? `<div class="status-banner pending"><b>!</b><div><b>${incomplete}</b> artículo(s) tienen proveedor/material "POR DEFINIR". Complétalos en <a href="#" data-goto="catalogo">Catálogo</a> para que el pedido al proveedor salga completo.</div></div>` : ''}
   <div class="grid2" style="align-items:start">
     <div class="card"><b>Avance por ciudad</b>
-      <table class="t" style="margin-top:8px"><thead><tr><th>Ciudad</th><th class="num">Enviaron</th><th style="width:45%"></th></tr></thead><tbody>
+      <div class="x-scroll" style="margin-top:8px"><table class="t"><thead><tr><th>Ciudad</th><th class="num">Enviaron</th><th style="width:45%"></th></tr></thead><tbody>
       ${A.cities.map(c => { const ss = act.filter(s => s.city_id === c.id); if (!ss.length) return ''; const n = ss.filter(s => A.latest[s.id]).length;
         return `<tr><td>${esc(c.name)}</td><td class="num">${n}/${ss.length}</td><td><div class="pbar"><i style="width:${n / ss.length * 100}%"></i></div></td></tr>`; }).join('')}
-      </tbody></table></div>
+      </tbody></table></div></div>
     <div class="card"><b>Pendientes de enviar (${pend.length})</b>
       <div style="margin-top:8px">${pend.length ? pend.map(s => `<div class="row small" style="padding:5px 0;border-bottom:1px solid var(--line)"><span class="chip navy">${esc(s.code)}</span>${esc(s.name)}<span class="right muted">${esc(A.cityById[s.city_id]?.name)}</span></div>`).join('') : '<p class="muted">Todas las tiendas enviaron su control 🎉</p>'}</div></div>
   </div>
   <div class="card" style="margin-top:14px"><b>Últimos envíos</b>
-    <table class="t" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Tienda</th><th>Ciudad</th></tr></thead><tbody>
+    <div class="x-scroll" style="margin-top:8px"><table class="t"><thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Tienda</th><th>Ciudad</th></tr></thead><tbody>
     ${A.subs.slice(0, 10).map(s => { const st = A.storeById[s.store_id]; return `<tr><td>${fmtDate(s.submitted_at)}</td><td>${fmtTime(s.submitted_at)}</td><td><span class="chip navy">${esc(st?.code)}</span></td><td>${esc(st?.name)}${s.source === 'importado' ? ' <span class="chip">Excel</span>' : ''}</td><td>${esc(A.cityById[st?.city_id]?.name)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">Sin envíos este mes</td></tr>'}
-    </tbody></table></div>`;
+    </tbody></table></div></div>`;
 }
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-goto]'); if (!g) return; e.preventDefault();
