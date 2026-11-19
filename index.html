@@ -173,14 +173,14 @@ table.t tr.city td{background:var(--navy-soft);font-weight:700;color:var(--navy)
 .thumb{width:38px;height:38px;object-fit:contain;border-radius:6px;background:#f2f3f8;flex:none}
 /* matriz */
 table.mx{font-size:12px}
-table.mx th.it-h{writing-mode:vertical-rl;transform:rotate(180deg);text-transform:none;letter-spacing:0;height:190px;padding:8px 4px;vertical-align:bottom;font-weight:600;color:var(--ink);font-size:11.5px;white-space:nowrap}
-table.mx th.it-h span{display:block;max-height:176px;overflow:hidden;text-overflow:ellipsis}
-table.mx th.cat-h{text-align:center;background:var(--navy);color:#fff;font-size:11px;top:0;border-left:2px solid #fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px}
-table.mx thead tr:nth-child(2) th{top:31px}
-table.mx thead tr:nth-child(3) th{top:221px}
+table.mx thead{position:sticky;top:0;z-index:3}
+table.mx thead th{position:static}
+table.mx th.it-h{text-transform:none;letter-spacing:0;min-width:74px;max-width:90px;padding:6px 4px;vertical-align:bottom;text-align:center;font-weight:600;color:var(--ink);font-size:10.5px;line-height:1.2;white-space:normal;background:#f7f8fc}
+table.mx th.it-h img{display:block;width:30px;height:40px;object-fit:contain;margin:0 auto 4px;border-radius:4px;background:#eef0f7}
+table.mx th.cat-h{text-align:left;padding-left:10px;background:var(--navy);color:#fff;font-size:11px;top:0;border-left:2px solid #fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px}
 table.mx td.c{text-align:center;padding:5px 3px;min-width:30px;font-size:14px;font-weight:700}
 table.mx td.st,table.mx th.st{position:sticky;left:0;background:#fff;z-index:1;min-width:170px}
-table.mx thead th.st{z-index:3;background:#f7f8fc}
+table.mx thead th.st{position:sticky;left:0;z-index:4;background:#f7f8fc}
 .c-tiene{color:var(--ok);background:var(--ok-soft)}
 .c-no_tiene{color:var(--bad);background:var(--bad-soft)}
 .c-deteriorado{color:var(--warn);background:var(--warn-soft)}
@@ -223,6 +223,50 @@ table.mx thead th.st{z-index:3;background:#f7f8fc}
 .sum3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 14px}
 .sum3 div{border-radius:12px;padding:12px;text-align:center;font-weight:700}
 .sum3 div b{display:block;font-size:26px}
+/* ---------- celular ---------- */
+html,body{overflow-x:clip}
+@media(max-width:760px){
+  body{font-size:14px}
+  .wrap{padding:12px}
+  .top .in{padding:8px 12px;gap:8px}
+  .brand img{height:18px}
+  .brand small{font-size:8.5px}
+  .top .who{font-size:11.5px}
+  .top .who b{font-size:13px}
+  #adMonth{width:132px!important;font-size:12.5px;padding:5px 6px!important}
+  #adExportAll .lbl{display:none}
+  .top .btn.sm{padding:6px 9px}
+  .tabs button{padding:10px 11px;font-size:13px}
+  .toolbar{gap:8px}
+  .toolbar h2{width:100%;font-size:18px}
+  .toolbar .right{margin-left:0}
+  .toolbar select.inp{flex:1 1 140px;width:auto}
+  .tbl-wrap{max-height:none}
+  table.t{font-size:12.5px}
+  table.t td,table.t th{white-space:nowrap}
+  table.t td.small{white-space:normal;min-width:170px}
+  table.mx th.it-h{white-space:normal}
+  table.t th,table.t td{padding:7px 8px}
+  table.mx td.st,table.mx th.st{min-width:128px;max-width:150px;font-size:11.5px}
+  .kpis{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi{padding:10px 12px}.kpi .v{font-size:22px}
+  .need-row{flex-wrap:wrap;gap:8px 10px;padding:10px 12px}
+  .need-row .grow{flex:1 1 calc(100% - 90px);min-width:0}
+  .need-row .chip{margin-left:42px}
+  .store-block .hd{padding:10px 12px}
+  .store-block .hd .right{margin-left:0;width:100%}
+  .grid2{grid-template-columns:1fr}
+  .send-bar{margin:24px -12px -12px;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+  .navbar{margin:-12px -12px 8px;padding:8px 12px;top:49px}
+  .progress{top:49px}
+  .seg{width:100%}.seg button{flex:1 1 auto}
+  .modal .mh,.modal .mb,.modal .mf{padding-left:16px;padding-right:16px}
+}
+@media(max-height:500px){
+  .top{position:static}
+  .tbl-wrap{max-height:none}
+  .progress,.navbar{top:0}
+}
 @media print{.top,.tabs,.toolbar .btn,.send-bar{display:none!important}}
 </style>
 </head>
@@ -265,7 +309,7 @@ table.mx thead th.st{z-index:3;background:#f7f8fc}
     <div class="brand"><img src="assets/logo-blanco.png" alt="Noraves"><small>PANEL MARKETING</small></div>
     <div class="row right" style="gap:8px">
       <input type="month" id="adMonth" class="inp" style="width:auto;padding:6px 10px;background:#fff;color:var(--ink)" title="Mes del informe">
-      <button class="btn amber sm" id="adExportAll" title="Descargar todos los informes en un solo Excel">⬇ Excel completo</button>
+      <button class="btn amber sm" id="adExportAll" title="Descargar todos los informes en un solo Excel">⬇ <span class="lbl">Excel completo</span></button>
       <button class="btn ghost sm" data-logout>Salir</button>
     </div>
   </div></header>
@@ -975,7 +1019,7 @@ function vFaltantes() {
     }
     return head + `<div class="tbl-wrap" style="max-height:75vh"><table class="t mx"><thead>
       <tr><th class="st"></th>${catsUsed.map(cid => `<th class="cat-h" colspan="${items.filter(i => i.category_id === cid).length}">${esc(A.catById[cid].name)}</th>`).join('')}<th></th></tr>
-      <tr><th class="st" style="vertical-align:bottom">Tienda</th>${items.map(i => `<th class="it-h" title="${esc(i.name)}"><span>${esc(i.name)}</span></th>`).join('')}<th class="it-h"><span>Por reponer</span></th></tr>
+      <tr><th class="st" style="vertical-align:bottom">Tienda</th>${items.map(i => `<th class="it-h" title="${esc(i.name)}"><img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy">${esc(i.name)}</th>`).join('')}<th class="it-h">Por reponer</th></tr>
       <tr><th class="st small">Stock almacén →</th>${items.map(i => `<th class="num" style="text-align:center">${A.iadm[i.id]?.stock ?? 0}</th>`).join('')}<th></th></tr>
       </thead><tbody>${rowsHtml || `<tr><td colspan="${items.length + 2}" class="empty">Nada pendiente 🎉</td></tr>`}</tbody></table></div>`;
   }
@@ -1037,7 +1081,7 @@ function vPedido() {
   <div class="seg" style="margin-bottom:14px">${[['enviar', `1 · Enviar a tiendas (${list.length})`], ['proveedor', `2 · Pedir al proveedor (${tot.length})`], ['camino', `3 · En camino (${open.length})`]].map(([k, l]) => `<button data-pmode="${k}" class="${(A.filters.pmode || 'enviar') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
   ${(A.filters.pmode || 'enviar') === 'enviar' ? `
     <p class="small muted" style="margin-top:0">Marca lo que ya despachaste. Pasará a <b>"En camino"</b>, se descontará del stock de almacén y la tienda lo verá. Cuando la tienda marque "Lo tenemos", se cerrará como recibido.</p>
-    ${list.length ? `<div class="row" style="margin-bottom:12px"><input class="inp grow" id="shipNote" placeholder="Nota del envío (opcional): ej. guía Shalom 12345, enviado con el camión de reparto…"><button class="btn ok" data-ship-selected>✓ Marcar seleccionados como enviados</button></div>` : ''}
+    ${list.length ? `<div class="row" style="margin-bottom:12px"><input class="inp grow" id="shipNote" style="min-width:220px" placeholder="Nota del envío (opcional): ej. guía Shalom 12345, enviado con el camión de reparto…"><button class="btn ok" data-ship-selected>✓ Marcar seleccionados como enviados</button></div>` : ''}
     ${Object.values(byStore).map(rows => { const s = rows[0].s; return `<div class="store-block"><div class="hd">
         <label class="row" style="gap:8px"><input type="checkbox" data-selstore="${s.id}"> <span class="chip navy">${esc(s.code)}</span><h3>${esc(s.name)}</h3></label><span class="muted small">${esc(A.cityById[s.city_id].name)}</span>
         <button class="btn ok sm right" data-ship-store="${s.id}">✓ Enviar todo a esta tienda</button></div>
@@ -1048,9 +1092,9 @@ function vPedido() {
   : (A.filters.pmode === 'proveedor') ? `
     <p class="small muted" style="margin-top:0">A pedir = (faltantes + deteriorados) × cantidad por tienda − stock en almacén.</p>
     ${Object.entries(bySup).map(([sup, ts]) => `<div class="store-block"><div class="hd"><h3>${esc(sup)}</h3><span class="right chip amber">${ts.reduce((a, t) => a + t.pedir, 0)} unidades${ts.some(t => t.costo != null) ? ' · ' + money(ts.reduce((a, t) => a + (t.costo || 0), 0)) : ''}</span></div>
-      <table class="t"><thead><tr><th>Artículo</th><th>Material</th><th>Medida</th><th class="num">Necesitan</th><th class="num">Stock</th><th class="num">A pedir</th><th class="num">P. sugerido</th><th class="num">Subtotal</th></tr></thead><tbody>
+      <div style="overflow-x:auto"><table class="t"><thead><tr><th>Artículo</th><th>Material</th><th>Medida</th><th class="num">Necesitan</th><th class="num">Stock</th><th class="num">A pedir</th><th class="num">P. sugerido</th><th class="num">Subtotal</th></tr></thead><tbody>
       ${ts.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td>${esc(t.adm.material)}</td><td>${esc(t.adm.size)}</td><td class="num">${t.reponer}</td><td class="num">${t.stock}</td><td class="num"><b>${t.pedir}</b></td><td class="num">${money(t.adm.suggested_price)}</td><td class="num">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
-      </tbody></table></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
+      </tbody></table></div></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
   : `
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Cant.</th><th>Nota</th><th></th></tr></thead><tbody>
     ${open.map(x => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id]; return `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}</td><td class="num">${x.qty}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty">No hay envíos en camino</td></tr>'}
