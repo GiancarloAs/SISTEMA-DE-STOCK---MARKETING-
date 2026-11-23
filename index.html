@@ -131,6 +131,14 @@ label.f .req{color:var(--bad)}
 .cat-tabs button.send{border-color:var(--amber);color:var(--navy-2)}
 .cat-tabs button.send.on{background:var(--amber);border-color:var(--amber);color:var(--navy-2)}
 .steps{display:grid;gap:10px}
+.grp-card{background:#fff;border:1.5px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;transition:border-color .15s}
+.grp-card.open{border-color:var(--navy)}
+.grp-head{display:flex;align-items:center;gap:12px;width:100%;border:0;background:transparent;padding:14px 16px}
+.grp-head .step-n{width:40px;height:40px;font-size:18px}
+.grp-arrow{font-size:22px;color:var(--muted);transition:transform .2s}
+.grp-card.open .grp-arrow{transform:rotate(90deg);color:var(--navy)}
+.grp-body{display:grid;gap:8px;padding:0 12px 12px;background:#fafbff;border-top:1px solid var(--line);padding-top:12px}
+.step-card.sub{box-shadow:none;padding:10px 12px}
 .qty-q{font-size:12.5px;font-weight:700;margin:10px 0 6px;color:var(--ink)}
 .qty-chips{display:flex;flex-wrap:wrap;gap:6px}
 .qty-chips button{min-width:40px;height:38px;border:1.5px solid var(--line);background:#fff;border-radius:9px;font-weight:700;font-size:15px;color:var(--navy)}
@@ -157,9 +165,9 @@ label.f .req{color:var(--bad)}
 .step-n{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--navy-soft);color:var(--navy);flex:none}
 .step-n.ok{background:var(--ok);color:#fff}
 .step-n.warn{background:var(--amber);color:var(--navy-2)}
-.step-card .thumbs{display:flex}
-.step-card .thumbs img{width:30px;height:40px;object-fit:cover;border-radius:5px;border:2px solid #fff;margin-left:-8px;background:#eef0f7;box-shadow:0 1px 3px rgba(0,0,0,.15)}
-@media(max-width:480px){.step-card .thumbs{display:none}}
+.step-card .thumbs,.grp-head .thumbs{display:flex}
+.step-card .thumbs img,.grp-head .thumbs img{width:30px;height:40px;object-fit:cover;border-radius:5px;border:2px solid #fff;margin-left:-8px;background:#eef0f7;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+@media(max-width:480px){.step-card .thumbs,.grp-head .thumbs{display:none}}
 .send-bar{position:sticky;bottom:0;z-index:20;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(20,25,60,.06);margin:24px -18px -18px;padding:12px 18px calc(12px + env(safe-area-inset-bottom))}
 .send-bar .in{max-width:1280px;margin:0 auto;display:flex;gap:12px;align-items:center}
 
@@ -552,7 +560,8 @@ function navBar(steps, current) {
     <div class="pbar" style="height:5px;margin-top:8px"><i style="width:${total ? done / total * 100 : 0}%"></i></div>
     <div class="small muted" style="margin-top:4px"><b>${done} de ${total}</b> revisados${total - done ? ` · faltan ${total - done}` : ' · ¡todo listo!'}</div></div>`;
 }
-function goStep(step) { ST.step = step; renderStore(); window.scrollTo({top: 0}); $('.cat-tabs .on')?.scrollIntoView({inline: 'center', block: 'nearest'}); }
+function goStep(step) {
+  if (typeof step === 'number') { const c = ST.cats.find(x => x.id === step); if (c) ST.openGroup = c.grupo; } ST.step = step; renderStore(); window.scrollTo({top: 0}); $('.cat-tabs .on')?.scrollIntoView({inline: 'center', block: 'nearest'}); }
 
 function renderStore() {
   if (typeof ST.step === 'string' && ST.step.startsWith('camp:')) return renderCampaign(+ST.step.slice(5));
@@ -578,14 +587,26 @@ function renderStore() {
   ${campaignCards()}
   ${progress}
   ${ST.prev && !done ? `<div class="row" style="margin:4px 0 14px"><button class="btn ghost sm" id="stPrev">↺ Cargar mis respuestas anteriores (${fmtDate(ST.prev.at)})</button><span class="small muted">Luego corrige solo lo que cambió.</span></div>` : ''}
-  <div class="steps">${steps.map((s, k) => {
-    const st = s.done === s.items.length ? 'ok' : s.done ? 'warn' : '';
-    return `<button class="step-card" data-step="${s.cat.id}">
-      <span class="step-n ${st}">${st === 'ok' ? '✓' : k + 1}</span>
-      <span class="grow" style="text-align:left"><span class="small muted" style="letter-spacing:.08em;font-weight:700">${esc(s.cat.grupo)}</span><br><b>${esc(s.cat.name)}</b></span>
-      <span class="thumbs">${s.items.slice(0, 3).map(i => `<img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy">`).join('')}</span>
-      <span class="chip ${st}">${s.done}/${s.items.length}</span><span class="muted" style="font-size:20px">›</span></button>`; }).join('')}
-    ${steps.length ? `<button class="step-card" data-step="resumen" ${done === total ? '' : 'style="opacity:.55"'}><span class="step-n">${steps.length + 1}</span><span class="grow" style="text-align:left"><span class="small muted" style="letter-spacing:.08em;font-weight:700">FINAL</span><br><b>Revisar y enviar</b></span><span class="muted" style="font-size:20px">›</span></button>` : ''}
+  <div class="steps">${GRUPOS.map(g => {
+    const gs = steps.filter(x => x.cat.grupo === g); if (!gs.length) return '';
+    const tot = gs.reduce((a, x) => a + x.items.length, 0), dn = gs.reduce((a, x) => a + x.done, 0), open = ST.openGroup === g;
+    const st = dn === tot ? 'ok' : dn ? 'warn' : '';
+    const thumbs = gs.flatMap(x => x.items).slice(0, 3);
+    return `<div class="grp-card ${open ? 'open' : ''}">
+      <button class="grp-head" data-group="${g}">
+        <span class="step-n ${st}">${st === 'ok' ? '✓' : g === 'ARTES' ? '🎨' : '🧰'}</span>
+        <span class="grow" style="text-align:left"><b style="font-size:16px">${g === 'ARTES' ? 'Artes' : 'Materiales'}</b><br>
+          <span class="small muted">${gs.length} categoría(s) · ${gs.map(x => esc(x.cat.name)).join(', ')}</span></span>
+        <span class="thumbs">${thumbs.map(i => `<img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy">`).join('')}</span>
+        <span class="chip ${st}">${dn}/${tot}</span><span class="grp-arrow">›</span></button>
+      ${open ? `<div class="grp-body">${gs.map(x => { const sx = x.done === x.items.length ? 'ok' : x.done ? 'warn' : '';
+        return `<button class="step-card sub" data-step="${x.cat.id}">
+          <span class="step-n ${sx}">${sx === 'ok' ? '✓' : steps.indexOf(x) + 1}</span>
+          <span class="grow" style="text-align:left"><b>${esc(x.cat.name)}</b></span>
+          <span class="thumbs">${x.items.slice(0, 3).map(i => `<img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy">`).join('')}</span>
+          <span class="chip ${sx}">${x.done}/${x.items.length}</span><span class="muted" style="font-size:20px">›</span></button>`; }).join('')}</div>` : ''}
+    </div>`; }).join('')}
+    ${steps.length ? `<button class="step-card" data-step="resumen" ${done === total ? '' : 'style="opacity:.55"'}><span class="step-n">✉</span><span class="grow" style="text-align:left"><span class="small muted" style="letter-spacing:.08em;font-weight:700">FINAL</span><br><b>Revisar y enviar</b></span><span class="muted" style="font-size:20px">›</span></button>` : ''}
   </div>
   ${!total ? `<div class="card empty">Todavía no hay artículos cargados. Marketing los agregará pronto.</div>` : ''}
   ${ST.subs.length ? `<div class="card" style="margin-top:14px"><b>Mis últimos envíos</b><div class="small muted" style="margin-top:6px">${ST.subs.map(s => `${fmtDate(s.submitted_at)} · ${fmtTime(s.submitted_at)}${s.source === 'importado' ? ' (importado del Excel)' : ''}`).join('<br>')}</div></div>` : ''}
@@ -688,6 +709,8 @@ document.addEventListener('click', e => {
     if (before > 0 && left() === 0) toast('Categoría completa ✓ Toca "Siguiente".', 'ok');
     return;
   }
+  const gh = e.target.closest('[data-group]');
+  if (gh) { ST.openGroup = ST.openGroup === gh.dataset.group ? null : gh.dataset.group; renderStore(); gh && $(`[data-group="${ST.openGroup}"]`)?.scrollIntoView({block: 'nearest', behavior: 'smooth'}); return; }
   const qb = e.target.closest('[data-qitem]');
   if (qb) {
     const id = qb.dataset.qitem, left = () => ST.items.filter(i => i.category_id == ST.step && !answered(i)).length, before = left();
