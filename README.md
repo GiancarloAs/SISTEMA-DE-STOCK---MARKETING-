@@ -35,6 +35,7 @@ Recomendado: Supabase › *Authentication* › *Sign In / Providers* › desacti
 - En **Pedido y envío** marcas lo despachado (uno por uno, por tienda o por selección). Pasa a *En camino*, se descuenta del stock de almacén y la tienda lo ve. Cuando la tienda marca *Lo tenemos*, queda **recibido** automáticamente. Un envío marcado por error se puede **anular**.
 - **A pedir al proveedor** = (faltantes + deteriorados) × cantidad por tienda − stock en almacén.
 - Proveedor, material y medida son **obligatorios** y el precio sugerido es opcional. Solo los ve el admin; la base de datos los guarda en una tabla aparte que las tiendas no pueden leer.
+- **Pedido por cantidad (materiales):** cada artículo tiene un *Pedido máximo*. Si es 1, se controla por unidad. Si es mayor, cuando la tienda marca *No lo tenemos* o *Deteriorado*, elige cuántos necesita (de 1 hasta el máximo), y esa cantidad pasa directa a *Pedido y envío* y al cálculo de *A pedir*.
 - "Quitar" una categoría o artículo lo oculta sin borrar el historial.
 - Las fotos se optimizan en el navegador a WebP: grande (máx. 1600 px) para PC y miniatura (480 px) para celular. La tarjeta se adapta a la proporción real de cada pieza.
 
@@ -58,6 +59,7 @@ supabase/02_seed.sql            Ciudades, tiendas, categorías y artículos inic
 supabase/03_importar_estado_excel.sql   Estado del Excel v2 (✔ / vacío / 1)
 supabase/04_hacer_admin.sql     Dar rol admin a un usuario
 supabase/05_campanas.sql        Campañas: tablas, permisos, validación y fotos de evidencia
+supabase/06_materiales_cantidad.sql  Pedido por cantidad + 8 materiales iniciales
 supabase/functions/gestionar-tienda/   Crea usuarios de tienda y cambia contraseñas (Edge Function)
 ```
 

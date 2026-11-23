@@ -131,6 +131,10 @@ label.f .req{color:var(--bad)}
 .cat-tabs button.send{border-color:var(--amber);color:var(--navy-2)}
 .cat-tabs button.send.on{background:var(--amber);border-color:var(--amber);color:var(--navy-2)}
 .steps{display:grid;gap:10px}
+.qty-q{font-size:12.5px;font-weight:700;margin:10px 0 6px;color:var(--ink)}
+.qty-chips{display:flex;flex-wrap:wrap;gap:6px}
+.qty-chips button{min-width:40px;height:38px;border:1.5px solid var(--line);background:#fff;border-radius:9px;font-weight:700;font-size:15px;color:var(--navy)}
+.qty-chips button.on{background:var(--navy);border-color:var(--navy);color:#fff}
 .camp-card{display:flex;align-items:center;gap:12px;width:100%;border:0;border-radius:var(--r);padding:14px 16px;margin-bottom:12px;color:#fff;background:linear-gradient(120deg,var(--navy) 0%,var(--navy-2) 100%);box-shadow:0 6px 18px rgba(13,17,181,.25)}
 .camp-card .camp-ico{font-size:26px}
 .photo-btn{display:flex;align-items:center;gap:7px;margin-top:6px;border:1.5px dashed var(--line);border-radius:9px;padding:6px 8px;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer}
@@ -511,13 +515,16 @@ async function initStore() {
   ST.ships = {}; ships.forEach(s => ST.ships[s.item_id] = s);
   ST.prev = null;
   if (subs[0]) {
-    const rows = await q(sb.from('submission_items').select('item_id,status').eq('submission_id', subs[0].id));
-    if (rows.length) ST.prev = {at: subs[0].submitted_at, answers: Object.fromEntries(rows.map(r => [r.item_id, r.status]))};
+    const rows = await q(sb.from('submission_items').select('item_id,status,qty,qty_bad').eq('submission_id', subs[0].id));
+    const isQty = id => (ST.items.find(i => i.id === id)?.max_qty || 1) > 1;
+    if (rows.length) ST.prev = {at: subs[0].submitted_at, answers: Object.fromEntries(rows
+      .map(r => [r.item_id, isQty(r.item_id) && needs(r.status) ? {status: r.status, qty: r.qty || 1} : r.status]))};
   }
   const d = store.get(draftKey()) || {};
   ST.answers = d.answers || {}; ST.notes = d.notes || '';
   // solo respuestas de artículos que siguen activos
-  Object.keys(ST.answers).forEach(k => { if (!ST.items.find(i => i.id == k)) delete ST.answers[k]; });
+  Object.keys(ST.answers).forEach(k => { const it = ST.items.find(i => i.id == k);
+    if (!it || (typeof ST.answers[k] === 'object' && it.max_qty <= 1)) delete ST.answers[k]; });
   ST.step = 'home';
   await loadStoreCampaigns();
   $('#stName').textContent = st.name;
@@ -531,12 +538,12 @@ function storeSteps() {
   const out = [];
   for (const g of GRUPOS) ST.cats.filter(c => c.grupo === g).forEach(c => {
     const its = ST.items.filter(i => i.category_id === c.id);
-    if (its.length) out.push({cat: c, items: its, done: its.filter(i => ST.answers[i.id]).length});
+    if (its.length) out.push({cat: c, items: its, done: its.filter(answered).length});
   });
   return out;
 }
 function navBar(steps, current) {
-  const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
+  const total = ST.items.length, done = ST.items.filter(answered).length;
   return `<div class="navbar"><div class="cat-tabs">
     <button data-step="home" class="${current === 'home' ? 'on' : ''}">☰ Inicio</button>
     ${steps.map(s => { const full = s.done === s.items.length;
@@ -550,7 +557,7 @@ function goStep(step) { ST.step = step; renderStore(); window.scrollTo({top: 0})
 function renderStore() {
   if (typeof ST.step === 'string' && ST.step.startsWith('camp:')) return renderCampaign(+ST.step.slice(5));
   const steps = storeSteps();
-  const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
+  const total = ST.items.length, done = ST.items.filter(answered).length;
   const progress = `<div class="progress"><div class="row small" style="margin-bottom:6px"><b>${done} de ${total} revisados</b><span class="right muted">${total - done ? `Faltan ${total - done}` : '¡Todo revisado!'}</span></div>
     <div class="pbar"><i style="width:${total ? done / total * 100 : 0}%"></i></div></div>`;
   const idx = steps.findIndex(s => s.cat.id === ST.step);
@@ -603,10 +610,10 @@ function renderStoreCategory(steps, idx, progress) {
 }
 
 function renderStoreResumen(steps, progress) {
-  const total = ST.items.length, done = ST.items.filter(i => ST.answers[i.id]).length;
+  const total = ST.items.length, done = ST.items.filter(answered).length;
   const pend = steps.find(s => s.done < s.items.length);
-  const c = st => ST.items.filter(i => ST.answers[i.id] === st).length;
-  const issues = ST.items.filter(i => ST.answers[i.id] === 'no_tiene' || ST.answers[i.id] === 'deteriorado');
+  const c = st => ST.items.filter(i => ansState(i, ST.answers[i.id]) === st).length;
+  const issues = ST.items.filter(i => needs(ansState(i, ST.answers[i.id])));
   $('#storeMain').innerHTML = `
   ${navBar(steps, 'resumen')}
   <h2 style="margin:6px 0 10px">Revisar y enviar</h2>
@@ -614,14 +621,14 @@ function renderStoreResumen(steps, progress) {
   <div class="sum3"><div class="c-tiene"><b>${c('tiene')}</b>Lo tenemos</div><div class="c-no_tiene"><b>${c('no_tiene')}</b>No lo tenemos</div><div class="c-deteriorado"><b>${c('deteriorado')}</b>Deteriorado</div></div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:12px 16px;border-bottom:1px solid var(--line)"><b>Por categoría</b></div>
-    ${steps.map(s => { const n = st => s.items.filter(i => ST.answers[i.id] === st).length;
+    ${steps.map(s => { const n = st => s.items.filter(i => ansState(i, ST.answers[i.id]) === st).length;
       return `<div class="need-row"><div class="grow"><b>${esc(s.cat.name)}</b><div class="small muted">${esc(s.cat.grupo)}</div></div>
         <span class="chip ok">✓ ${n('tiene')}</span><span class="chip bad">✕ ${n('no_tiene')}</span><span class="chip warn">! ${n('deteriorado')}</span>
         <button class="btn ghost xs" data-step="${s.cat.id}">Editar</button></div>`; }).join('')}
   </div>
   ${issues.length ? `<div class="card" style="padding:0;overflow:hidden;margin-top:14px">
     <div style="padding:12px 16px;border-bottom:1px solid var(--line)"><b>Lo que reportas como faltante o deteriorado</b><div class="small muted">Confirma que esté bien antes de enviar.</div></div>
-    ${issues.map(i => `<div class="need-row"><img class="thumb" src="${esc(photoUrl(i.thumb_path))}" alt=""><div class="grow">${esc(i.name)}<div class="small muted">${esc(ST.cats.find(c => c.id === i.category_id)?.name || '')}</div></div><span class="chip ${STATUS[ST.answers[i.id]].cls}">${STATUS[ST.answers[i.id]].short}</span></div>`).join('')}
+    ${issues.map(i => `<div class="need-row"><img class="thumb" src="${esc(photoUrl(i.thumb_path))}" alt=""><div class="grow">${esc(i.name)}<div class="small muted">${esc(ST.cats.find(c => c.id === i.category_id)?.name || '')}</div></div><span class="chip ${STATUS[ansState(i, ST.answers[i.id])].cls}">${esc(ansLabel(i, ST.answers[i.id]))}</span></div>`).join('')}
   </div>` : ''}
   <div class="card" style="margin-top:14px">
     <label class="f" for="stNotes">Observaciones (opcional)</label>
@@ -633,8 +640,22 @@ function renderStoreResumen(steps, progress) {
   </div></div>`;
 }
 
+/* Respuesta = "estado" o, en materiales con pedido por cantidad, {status, qty} */
+const ansState = (it, a) => !a ? null : typeof a === 'string' ? a : a.status;
+const ansQty = a => typeof a === 'object' && a ? a.qty : null;
+/* ¿Respondido? Si falta o está deteriorado y se pide por cantidad, debe elegir cuántos */
+function answered(it) {
+  const a = ST.answers[it.id], st = ansState(it, a);
+  if (!st) return false;
+  return !(it.max_qty > 1 && needs(st) && !ansQty(a));
+}
+function ansLabel(it, a) {
+  const st = ansState(it, a), q = ansQty(a);
+  return STATUS[st].short + (q && needs(st) ? ` · pide ${q}` : '');
+}
+
 function itemCard(it) {
-  const a = ST.answers[it.id];
+  const ans = ST.answers[it.id], a = ansState(it, ans), q = ansQty(ans);
   const ratio = it.photo_w && it.photo_h ? Math.min(Math.max(it.photo_w / it.photo_h, 0.55), 1.9) : 0.75;
   const src = photoUrl(it.thumb_path || it.photo_path);
   const ship = ST.ships[it.id];
@@ -646,6 +667,10 @@ function itemCard(it) {
     <div class="body"><div class="name">${esc(it.name)}</div>
       <div class="ans">${['tiene', 'no_tiene', 'deteriorado'].map(s =>
         `<button type="button" data-item="${it.id}" data-s="${s}" class="${a === s ? 'on' : ''}"><span class="dot">${STATUS[s].icon}</span>${STATUS[s].label}</button>`).join('')}</div>
+      ${it.max_qty > 1 && needs(a) ? `<div class="qty-q">¿Cuántos necesitan? <span class="muted">(máx. ${it.max_qty})</span></div>
+        <div class="qty-chips">${Array.from({length: it.max_qty}, (_, k) => k + 1).map(n =>
+          `<button type="button" data-qitem="${it.id}" data-n="${n}" class="${q === n ? 'on' : ''}">${n}</button>`).join('')}</div>
+        ${!q ? '<div class="small" style="color:var(--bad);margin-top:4px">Elige una cantidad</div>' : ''}` : ''}
     </div></div>`;
 }
 
@@ -655,10 +680,19 @@ document.addEventListener('click', e => {
   if (!ST.store || $('#storeView').classList.contains('hidden')) return;
   const b = e.target.closest('.ans button');
   if (b) {
-    const id = b.dataset.item, left = () => ST.items.filter(i => i.category_id == ST.step && !ST.answers[i.id]).length;
+    const id = b.dataset.item, left = () => ST.items.filter(i => i.category_id == ST.step && !answered(i)).length;
     const before = left();
-    ST.answers[id] = b.dataset.s; saveDraft();
+    const it = ST.items.find(i => i.id == id), prevQ = ansQty(ST.answers[id]);
+    ST.answers[id] = it?.max_qty > 1 && needs(b.dataset.s) ? {status: b.dataset.s, qty: prevQ || null} : b.dataset.s; saveDraft();
     const y = window.scrollY; renderStore(); window.scrollTo(0, y);
+    if (before > 0 && left() === 0) toast('Categoría completa ✓ Toca "Siguiente".', 'ok');
+    return;
+  }
+  const qb = e.target.closest('[data-qitem]');
+  if (qb) {
+    const id = qb.dataset.qitem, left = () => ST.items.filter(i => i.category_id == ST.step && !answered(i)).length, before = left();
+    ST.answers[id] = {status: ansState(null, ST.answers[id]), qty: +qb.dataset.n};
+    saveDraft(); const y = window.scrollY; renderStore(); window.scrollTo(0, y);
     if (before > 0 && left() === 0) toast('Categoría completa ✓ Toca "Siguiente".', 'ok');
     return;
   }
@@ -668,14 +702,15 @@ document.addEventListener('click', e => {
   if (z) { const it = ST.items.find(i => i.id == z.dataset.zoom); if (it?.photo_path) lightbox(photoUrl(it.photo_path), it.name); return; }
   if (e.target.closest('#stSend')) sendChecklist();
   if (e.target.closest('#stPrev')) {
-    ST.items.forEach(i => { if (!ST.answers[i.id] && ST.prev.answers[i.id]) ST.answers[i.id] = ST.prev.answers[i.id]; });
+    ST.items.forEach(i => { const pv = ST.prev.answers[i.id];
+      if (!ST.answers[i.id] && pv != null) ST.answers[i.id] = pv; });
     saveDraft(); renderStore(); toast('Respuestas anteriores cargadas. Revisa y corrige lo que cambió.');
   }
 });
 document.addEventListener('input', e => { if (e.target.id === 'stNotes') { ST.notes = e.target.value; saveDraft(); } });
 
 async function sendChecklist() {
-  const c = s => ST.items.filter(i => ST.answers[i.id] === s).length;
+  const c = s => ST.items.filter(i => ansState(i, ST.answers[i.id]) === s).length;
   const ok = await confirmBox('¿Enviar control?', `
     <p>Vas a enviar el control de <b>${esc(ST.store.name)}</b> (${esc(ST.store.code)}).</p>
     <div class="sum3"><div class="c-tiene"><b>${c('tiene')}</b>Lo tenemos</div><div class="c-no_tiene"><b>${c('no_tiene')}</b>No lo tenemos</div><div class="c-deteriorado"><b>${c('deteriorado')}</b>Deteriorado</div></div>
@@ -866,10 +901,11 @@ async function loadAdmin() {
     fetchAll(() => sb.from('submissions').select('*').eq('period', A.period).order('submitted_at', {ascending: false})),
     fetchAll(() => sb.from('shipments').select('*').order('sent_at', {ascending: false})),
   ]);
-  const subItems = {};
+  const subItems = {}, subQty = {};
   for (const ids of chunk(subs.map(s => s.id), 150)) {
     const rows = await fetchAll(() => sb.from('submission_items').select('*').in('submission_id', ids));
-    rows.forEach(r => (subItems[r.submission_id] ||= {})[r.item_id] = r.status);
+    rows.forEach(r => { (subItems[r.submission_id] ||= {})[r.item_id] = r.status;
+      if (r.qty != null) (subQty[r.submission_id] ||= {})[r.item_id] = {qty: r.qty}; });
   }
   const latest = {};
   subs.forEach(s => { if (!latest[s.store_id]) latest[s.store_id] = s; });   // vienen ordenados desc
@@ -878,7 +914,7 @@ async function loadAdmin() {
     const k = s.store_id + ':' + s.item_id; openShip[k] = (openShip[k] || 0) + s.qty;
   });
   Object.assign(A, {
-    cities, stores, cats, items, subs, ships, subItems, latest, openShip,
+    cities, stores, cats, items, subs, ships, subItems, subQty, latest, openShip,
     iadm: Object.fromEntries(iadm.map(r => [r.item_id, r])),
     cityById: Object.fromEntries(cities.map(c => [c.id, c])),
     catById: Object.fromEntries(cats.map(c => [c.id, c])),
@@ -897,6 +933,18 @@ function cellState(storeId, itemId) {
 }
 const needs = s => s === 'no_tiene' || s === 'deteriorado';
 const qtyPer = itemId => A.iadm[itemId]?.qty_per_store || 1;
+/* Cantidad que pidió la tienda (materiales con pedido por cantidad) */
+function cellQty(storeId, itemId) { const sub = A.latest[storeId]; return sub ? A.subQty[sub.id]?.[itemId] || null : null; }
+/* Unidades a enviar: lo que pidió la tienda, o la cantidad por tienda del catálogo */
+function needQty(storeId, itemId, state = cellState(storeId, itemId)) {
+  if (!needs(state)) return 0;
+  return cellQty(storeId, itemId)?.qty || qtyPer(itemId);
+}
+/* Texto de celda en la matriz: ✕3 = falta, pide 3 */
+function cellText(storeId, itemId, state) {
+  const n = needs(state) && (A.itemById[itemId]?.max_qty || 1) > 1 ? cellQty(storeId, itemId)?.qty : null;
+  return STATUS[state].icon + (n ? n : '');
+}
 
 function reportItems() {
   const f = A.filters;
@@ -911,8 +959,8 @@ function reportStores() {
 function itemTotals(items = reportItems(), stores = reportStores()) {
   return items.map(it => {
     const t = {item: it, cat: A.catById[it.category_id], adm: A.iadm[it.id] || {}, no_tiene: 0, deteriorado: 0, en_camino: 0, tiene: 0, sin_dato: 0};
-    stores.forEach(s => t[cellState(s.id, it.id)]++);
-    t.reponer = (t.no_tiene + t.deteriorado) * qtyPer(it.id);
+    t.reponer = 0;
+    stores.forEach(s => { const c = cellState(s.id, it.id); t[c]++; t.reponer += needQty(s.id, it.id, c); });
     t.stock = t.adm.stock || 0;
     t.pedir = Math.max(0, t.reponer - t.stock);
     t.costo = t.adm.suggested_price != null ? t.pedir * t.adm.suggested_price : null;
@@ -1035,7 +1083,7 @@ function vFaltantes() {
       if (A.filters.onlyNeed && !items.some(i => needs(cellState(s.id, i.id)))) continue;
       if (s.city_id !== lastCity) { lastCity = s.city_id; rowsHtml += `<tr class="city"><td class="st" colspan="1">${esc(A.cityById[s.city_id].name)}</td><td colspan="${items.length + 1}"></td></tr>`; }
       rowsHtml += `<tr><td class="st"><b>${esc(s.code)}</b> ${esc(s.name)}<div class="small muted">${A.latest[s.id] ? fmtDT(A.latest[s.id].submitted_at) : 'sin envío este mes'}</div></td>${items.map(i => {
-        const c = cellState(s.id, i.id); return `<td class="c ${show(c) ? 'c-' + c : ''}" title="${esc(i.name)} · ${STATUS[c].short}">${show(c) ? STATUS[c].icon : ''}</td>`; }).join('')}
+        const c = cellState(s.id, i.id); return `<td class="c ${show(c) ? 'c-' + c : ''}" title="${esc(i.name)} · ${STATUS[c].short}">${show(c) ? cellText(s.id, i.id, c) : ''}</td>`; }).join('')}
         <td class="num"><b>${items.filter(i => needs(cellState(s.id, i.id))).length}</b></td></tr>`;
     }
     return head + `<div class="tbl-wrap" style="max-height:75vh"><table class="t mx"><thead>
@@ -1051,7 +1099,7 @@ function vFaltantes() {
       if (!list.length) return '';
       return `<div class="store-block"><div class="hd"><span class="chip navy">${esc(s.code)}</span><h3>${esc(s.name)}</h3><span class="muted small">${esc(A.cityById[s.city_id].name)}</span>
         <span class="right small muted">${A.latest[s.id] ? 'Último envío: ' + fmtDT(A.latest[s.id].submitted_at) : 'Sin envío este mes'}</span></div>
-        ${list.map(x => `<div class="need-row"><img class="thumb" src="${esc(photoUrl(x.i.thumb_path))}" alt=""><div class="grow">${esc(x.i.name)}<div class="small muted">${esc(A.catById[x.i.category_id].name)}</div></div><span class="chip ${STATUS[x.c].cls}">${STATUS[x.c].short}</span></div>`).join('')}</div>`;
+        ${list.map(x => `<div class="need-row"><img class="thumb" src="${esc(photoUrl(x.i.thumb_path))}" alt=""><div class="grow">${esc(x.i.name)}<div class="small muted">${esc(A.catById[x.i.category_id].name)}</div></div><span class="chip ${STATUS[x.c].cls}">${STATUS[x.c].short}${needs(x.c) && needQty(s.id, x.i.id, x.c) > 1 ? ' · ' + needQty(s.id, x.i.id, x.c) + ' u.' : ''}</span></div>`).join('')}</div>`;
     }).join('');
     return head + (blocks || '<div class="card empty">Ninguna tienda tiene faltantes con este filtro 🎉</div>');
   }
@@ -1059,7 +1107,7 @@ function vFaltantes() {
   if (m === 'ciudad') {
     const cities = A.cities.filter(c => stores.some(s => s.city_id === c.id));
     const rows = items.map(i => {
-      const per = cities.map(c => stores.filter(s => s.city_id === c.id && needs(cellState(s.id, i.id))).length * qtyPer(i.id));
+      const per = cities.map(c => stores.filter(s => s.city_id === c.id).reduce((a, s) => a + needQty(s.id, i.id), 0));
       const ship = stores.filter(s => cellState(s.id, i.id) === 'en_camino').length;
       return {i, per, total: per.reduce((a, b) => a + b, 0), ship};
     }).filter(r => !A.filters.onlyNeed || r.total);
@@ -1087,7 +1135,7 @@ function pendingSends() {
   const items = reportItems(), out = [];
   for (const s of reportStores()) for (const i of items) {
     const c = cellState(s.id, i.id);
-    if (needs(c)) out.push({s, i, c, qty: qtyPer(i.id)});
+    if (needs(c)) out.push({s, i, c, qty: needQty(s.id, i.id, c), have: cellQty(s.id, i.id)});
   }
   return out;
 }
@@ -1161,11 +1209,11 @@ function vCatalogo() {
       return `<div class="cat-item ${c.active ? '' : 'off'}"><div class="grow"><b>${esc(c.name)}</b><div class="small muted">${n} artículo(s)</div></div>
       <button class="btn ghost xs" data-cat-edit="${c.id}">Editar</button>${c.active ? `<button class="btn ghost xs" data-cat-off="${c.id}">Quitar</button>` : `<button class="btn ghost xs" data-cat-on="${c.id}">Restaurar</button>`}</div>`; }).join('') || '<span class="muted small">Sin categorías</span>'}</div>`).join('')}
   <div class="toolbar" style="margin-top:26px"><h2>Artículos</h2>${filtersBar({city: false})}<button class="btn amber sm right" data-item-new>+ Nuevo artículo</button><button class="btn ghost sm" data-x="catalogo">⬇ Excel</button></div>
-  <div class="tbl-wrap"><table class="t"><thead><tr><th>Foto</th><th>Artículo</th><th>Categoría</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">P. sugerido</th><th class="num">Stock</th><th class="num">x tienda</th><th></th></tr></thead><tbody>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Foto</th><th>Artículo</th><th>Categoría</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">P. sugerido</th><th class="num">Stock</th><th>Pedido</th><th></th></tr></thead><tbody>
   ${items.map(i => { const a = A.iadm[i.id] || {}; const inc = a.supplier === 'POR DEFINIR' || a.material === 'POR DEFINIR';
     return `<tr style="${i.active ? '' : 'opacity:.5'}"><td><img class="thumb" style="width:46px;height:56px;cursor:zoom-in" src="${esc(photoUrl(i.thumb_path))}" data-lb="${i.id}" alt=""></td><td><b>${esc(i.name)}</b>${inc ? ' <span class="chip amber">Completar datos</span>' : ''}${i.active ? '' : ' <span class="chip">Quitado</span>'}</td>
     <td class="small">${esc(A.catById[i.category_id]?.grupo)} · ${esc(A.catById[i.category_id]?.name)}</td><td class="small">${esc(a.supplier || '—')}</td><td class="small">${esc(a.material || '—')}</td><td class="small">${esc(a.size || '—')}</td>
-    <td class="num small">${money(a.suggested_price)}</td><td class="num">${a.stock ?? 0}</td><td class="num">${a.qty_per_store ?? 1}</td>
+    <td class="num small">${money(a.suggested_price)}</td><td class="num">${a.stock ?? 0}</td><td class="small">${(i.max_qty || 1) > 1 ? `1 a ${i.max_qty}` : 'Por unidad'}</td>
     <td style="white-space:nowrap"><button class="btn ghost xs" data-item-edit="${i.id}">Editar</button> ${i.active ? `<button class="btn ghost xs" data-item-off="${i.id}">Quitar</button>` : `<button class="btn ghost xs" data-item-on="${i.id}">Restaurar</button>`}</td></tr>`; }).join('') || '<tr><td colspan="10" class="empty">Sin artículos</td></tr>'}
   </tbody></table></div>
   <p class="hint">"Quitar" oculta el artículo o categoría para las tiendas y los informes, pero conserva el historial. Puedes restaurarlo cuando quieras.</p>`;
@@ -1207,9 +1255,13 @@ function itemForm(it = {}) {
         <div class="field"><label class="f">Medida <span class="req">*</span></label><input class="inp" id="ifSize" value="${esc(a.size || '')}" placeholder="Ej. A4 (21 x 29.7 cm)"></div>
         <div class="field"><label class="f">Precio sugerido (S/)</label><input class="inp" id="ifPrice" type="number" step="0.01" min="0" value="${a.suggested_price ?? ''}" placeholder="Opcional"></div>
         <div class="field"><label class="f">Stock en almacén</label><input class="inp" id="ifStock" type="number" min="0" value="${a.stock ?? 0}"></div>
-        <div class="field"><label class="f">Cantidad por tienda</label><input class="inp" id="ifQty" type="number" min="1" value="${a.qty_per_store ?? 1}"><div class="hint">Cuántas unidades lleva cada tienda.</div></div>
+        <div class="field"><label class="f">Cantidad a enviar por defecto</label><input class="inp" id="ifQty" type="number" min="1" value="${a.qty_per_store ?? 1}"><div class="hint">Se usa cuando la tienda no indicó cuántos pide.</div></div>
       </div></div>
-    <div class="field"><label class="f">Orden</label><input class="inp" id="ifSort" type="number" value="${it.sort ?? (A.items.length + 1)}" style="max-width:120px"></div>`,
+    <div class="grid2">
+      <div class="field"><label class="f">Pedido máximo de la tienda</label><input class="inp" id="ifMax" type="number" min="1" max="50" value="${it.max_qty ?? 1}">
+        <div class="hint">1 = por unidad. Si es mayor, cuando la tienda marque "No lo tenemos" o "Deteriorado" elegirá cuántos necesita (de 1 hasta este número).</div></div>
+      <div class="field"><label class="f">Orden</label><input class="inp" id="ifSort" type="number" value="${it.sort ?? (A.items.length + 1)}" style="max-width:120px"></div>
+    </div>`,
     {wide: true, footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="ifSave">Guardar artículo</button>`});
   let photo = null;
   $('#ifFile', m.el).onchange = async e => {
@@ -1220,7 +1272,7 @@ function itemForm(it = {}) {
   };
   $('#ifSave', m.el).onclick = async () => {
     const v = id => $(id, m.el).value.trim();
-    const base = {name: v('#ifName'), category_id: +v('#ifCat'), sort: +v('#ifSort') || 0};
+    const base = {name: v('#ifName'), category_id: +v('#ifCat'), sort: +v('#ifSort') || 0, max_qty: Math.min(50, Math.max(1, +v('#ifMax') || 1))};
     const adm = {supplier: v('#ifSup'), material: v('#ifMat'), size: v('#ifSize'),
       suggested_price: v('#ifPrice') === '' ? null : +v('#ifPrice'), stock: Math.max(0, +v('#ifStock') || 0), qty_per_store: Math.max(1, +v('#ifQty') || 1)};
     if (!base.name || !base.category_id) return toast('Nombre y categoría son obligatorios', 'bad');
@@ -1544,7 +1596,7 @@ function xlSheet(wb, name, title, headers, rows, widths = []) {
 }
 function paintStatus(ws, firstRow, colFrom, colTo) {
   for (let r = firstRow; r <= ws.rowCount; r++) for (let c = colFrom; c <= colTo; c++) {
-    const cell = ws.getCell(r, c), k = Object.keys(XSYM).find(k => XSYM[k] === cell.value || STATUS[k].short === cell.value);
+    const cell = ws.getCell(r, c), v = String(cell.value ?? ''), k = Object.keys(XSYM).find(k => (v && v.startsWith(XSYM[k])) || STATUS[k].short === v);
     if (k) { cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: XFILL[k]}}; cell.font = {bold: true, color: {argb: XFONT[k]}}; cell.alignment = {horizontal: 'center'}; }
   }
 }
@@ -1568,7 +1620,7 @@ async function addMatriz(wb, items, name = 'Matriz', withImgs = true) {
   const rows = stores.filter(s => !A.filters.onlyNeed || items.some(i => needs(cellState(s.id, i.id)))).map(s => {
     const st = items.map(i => cellState(s.id, i.id));
     return [A.cityById[s.city_id].name, s.code, s.name, A.latest[s.id] ? fmtDT(A.latest[s.id].submitted_at) : 'Sin envío',
-      ...st.map(c => !A.filters.onlyNeed || needs(c) ? XSYM[c] : ''), st.filter(needs).length];
+      ...st.map((c, k) => !A.filters.onlyNeed || needs(c) ? XSYM[c] + (needs(c) && items[k].max_qty > 1 && cellQty(s.id, items[k].id) ? cellQty(s.id, items[k].id).qty : '') : ''), items.reduce((a, it, k) => a + needQty(s.id, it.id, st[k]), 0)];
   });
   rows.push(['', '', 'STOCK ALMACÉN', '', ...items.map(i => A.iadm[i.id]?.stock ?? 0), '']);
   const ws = xlSheet(wb, name, 'Matriz de control de artes y materiales', head, rows, [12, 9, 26, 16, ...items.map(() => 7), 10]);
@@ -1592,14 +1644,14 @@ function addPorTienda(wb) {
   for (const s of reportStores()) for (const i of reportItems()) {
     const c = cellState(s.id, i.id);
     if (needs(c) || (!A.filters.onlyNeed && c === 'en_camino'))
-      rows.push([A.cityById[s.city_id].name, s.code, s.name, A.catById[i.category_id].grupo, A.catById[i.category_id].name, i.name, STATUS[c].short, needs(c) ? qtyPer(i.id) : 0]);
+      rows.push([A.cityById[s.city_id].name, s.code, s.name, A.catById[i.category_id].grupo, A.catById[i.category_id].name, i.name, STATUS[c].short, needQty(s.id, i.id, c)]);
   }
   paintStatus(xlSheet(wb, 'Por tienda', 'Faltantes por tienda', ['Ciudad', 'Código', 'Tienda', 'Grupo', 'Categoría', 'Artículo', 'Estado', 'Cant. a enviar'], rows, [12, 9, 26, 12, 20, 32, 13, 12]), 5, 7, 7);
 }
 function addPorCiudad(wb) {
   const stores = reportStores(), cities = A.cities.filter(c => stores.some(s => s.city_id === c.id));
   const rows = reportItems().map(i => {
-    const per = cities.map(c => stores.filter(s => s.city_id === c.id && needs(cellState(s.id, i.id))).length * qtyPer(i.id));
+    const per = cities.map(c => stores.filter(s => s.city_id === c.id).reduce((a, s) => a + needQty(s.id, i.id), 0));
     return [A.catById[i.category_id].grupo, A.catById[i.category_id].name, i.name, ...per, per.reduce((a, b) => a + b, 0), stores.filter(s => cellState(s.id, i.id) === 'en_camino').length];
   }).filter(r => !A.filters.onlyNeed || r[r.length - 2]);
   xlSheet(wb, 'Por ciudad', 'Faltantes por ciudad', ['Grupo', 'Categoría', 'Artículo', ...cities.map(c => c.name), 'Total a reponer', 'En camino'], rows, [12, 20, 32, ...cities.map(() => 11), 14, 11]);
@@ -1620,8 +1672,8 @@ function addPedido(wb) {
   xlSheet(wb, 'En camino', 'Envíos en camino', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Cant.', 'Nota'], open, [16, 12, 9, 26, 32, 7, 36]);
 }
 function addCatalogo(wb) {
-  const rows = A.items.map(i => { const a = A.iadm[i.id] || {}, c = A.catById[i.category_id]; return [c?.grupo, c?.name, i.name, a.supplier, a.material, a.size, a.suggested_price ?? '', a.stock ?? 0, a.qty_per_store ?? 1, i.active && c?.active ? 'Activo' : 'Quitado']; });
-  xlSheet(wb, 'Catálogo', 'Catálogo de artes y materiales', ['Grupo', 'Categoría', 'Artículo', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Stock', 'x tienda', 'Estado'], rows, [12, 20, 32, 24, 20, 18, 12, 8, 9, 10]).getColumn(7).numFmt = '"S/ "#,##0.00';
+  const rows = A.items.map(i => { const a = A.iadm[i.id] || {}, c = A.catById[i.category_id]; return [c?.grupo, c?.name, i.name, a.supplier, a.material, a.size, a.suggested_price ?? '', a.stock ?? 0, (i.max_qty || 1) > 1 ? `1 a ${i.max_qty}` : 'Por unidad', i.active && c?.active ? 'Activo' : 'Quitado']; });
+  xlSheet(wb, 'Catálogo', 'Catálogo de artes y materiales', ['Grupo', 'Categoría', 'Artículo', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Stock', 'Pedido', 'Estado'], rows, [12, 20, 32, 24, 20, 18, 12, 8, 11, 10]).getColumn(7).numFmt = '"S/ "#,##0.00';
 }
 async function download(wb, name) {
   const buf = await wb.xlsx.writeBuffer();
