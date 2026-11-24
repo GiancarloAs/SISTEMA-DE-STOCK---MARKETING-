@@ -131,6 +131,8 @@ label.f .req{color:var(--bad)}
 .cat-tabs button.send{border-color:var(--amber);color:var(--navy-2)}
 .cat-tabs button.send.on{background:var(--amber);border-color:var(--amber);color:var(--navy-2)}
 .steps{display:grid;gap:10px}
+.bal-block{border:2px solid var(--amber)}
+.bal-block .hd{background:var(--amber-soft);flex-direction:column;align-items:flex-start;gap:2px;text-align:left}
 .grp-card{background:#fff;border:1.5px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;transition:border-color .15s}
 .grp-card.open{border-color:var(--navy)}
 .grp-head{display:flex;align-items:center;gap:12px;width:100%;border:0;background:transparent;padding:14px 16px}
@@ -932,12 +934,22 @@ async function loadAdmin() {
   }
   const latest = {};
   subs.forEach(s => { if (!latest[s.store_id]) latest[s.store_id] = s; });   // vienen ordenados desc
-  const openShip = {};
-  ships.filter(s => s.status === 'en_camino').forEach(s => {
+  // Último control de cada tienda en cualquier mes (para saber si ya respondió después de un envío)
+  const lastAny = {};
+  (await fetchAll(() => sb.from('submissions').select('store_id,submitted_at').order('submitted_at', {ascending: false})))
+    .forEach(r => { if (!lastAny[r.store_id]) lastAny[r.store_id] = r.submitted_at; });
+  const after = (sh, at) => !at || new Date(sh.sent_at) >= new Date(at);   // mismo instante = importado junto con el control
+  const openShip = {}, recentShip = {};
+  ships.filter(s => s.status === 'en_camino' && after(s, latest[s.store_id]?.submitted_at)).forEach(s => {
     const k = s.store_id + ':' + s.item_id; openShip[k] = (openShip[k] || 0) + s.qty;
   });
+  ships.filter(s => s.status !== 'anulado' && Date.now() - new Date(s.sent_at) < 30 * 864e5).forEach(s => {
+    const k = s.store_id + ':' + s.item_id; if (!recentShip[k] || s.sent_at > recentShip[k].sent_at) recentShip[k] = s;
+  });
+  // Saldos pendientes: se envió menos de lo pedido y la tienda aún no hizo un nuevo control
+  const balances = ships.filter(s => s.requested > s.qty && s.status !== 'anulado' && after(s, lastAny[s.store_id]));
   Object.assign(A, {
-    cities, stores, cats, items, subs, ships, subItems, subQty, latest, openShip,
+    cities, stores, cats, items, subs, ships, subItems, subQty, latest, openShip, recentShip, balances, lastAny,
     iadm: Object.fromEntries(iadm.map(r => [r.item_id, r])),
     cityById: Object.fromEntries(cities.map(c => [c.id, c])),
     catById: Object.fromEntries(cats.map(c => [c.id, c])),
@@ -1167,18 +1179,28 @@ function vPedido() {
   const byStore = {}; list.forEach(r => (byStore[r.s.id] ||= []).push(r));
   const tot = itemTotals().filter(t => t.pedir > 0);
   const bySup = {}; tot.forEach(t => (bySup[t.adm.supplier || 'SIN PROVEEDOR'] ||= []).push(t));
-  const open = A.ships.filter(x => x.status === 'en_camino' && A.storeById[x.store_id] && (!A.filters.city || A.storeById[x.store_id].city_id == A.filters.city));
+  const inCity = x => A.storeById[x.store_id] && (!A.filters.city || A.storeById[x.store_id].city_id == A.filters.city);
+  const open = A.ships.filter(x => x.status === 'en_camino' && inCity(x));
+  const bal = A.balances.filter(inCity);
   return `
   <div class="toolbar"><h2>Pedido y envío</h2>${filtersBar()}<button class="btn sm right" data-x="pedido">⬇ Excel</button></div>
-  <div class="seg" style="margin-bottom:14px">${[['enviar', `1 · Enviar a tiendas (${list.length})`], ['proveedor', `2 · Pedir al proveedor (${tot.length})`], ['camino', `3 · En camino (${open.length})`]].map(([k, l]) => `<button data-pmode="${k}" class="${(A.filters.pmode || 'enviar') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="seg" style="margin-bottom:14px">${[['enviar', `1 · Enviar a tiendas (${list.length}${bal.length ? ` + ${bal.length} saldo${bal.length > 1 ? 's' : ''}` : ''})`], ['proveedor', `2 · Pedir al proveedor (${tot.length})`], ['camino', `3 · En camino (${open.length})`]].map(([k, l]) => `<button data-pmode="${k}" class="${(A.filters.pmode || 'enviar') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
   ${(A.filters.pmode || 'enviar') === 'enviar' ? `
     <p class="small muted" style="margin-top:0">Marca lo que ya despachaste. Pasará a <b>"En camino"</b>, se descontará del stock de almacén y la tienda lo verá. Cuando la tienda marque "Lo tenemos", se cerrará como recibido.</p>
+    ${bal.length ? `<div class="store-block bal-block"><div class="hd"><h3>⏳ Saldos pendientes (${bal.length})</h3><span class="small muted">Envíos que salieron incompletos. Desaparecen cuando envías el saldo, lo descartas o la tienda hace un nuevo control (ahí vuelve a pedir lo que le falte).</span></div>
+      ${bal.map(x => { const st = A.storeById[x.store_id], it = A.itemById[x.item_id], falta = x.requested - x.qty, stock = A.iadm[x.item_id]?.stock ?? 0;
+        return `<div class="need-row"><img class="thumb" src="${esc(photoUrl(it?.thumb_path))}" alt="">
+        <div class="grow"><b>${esc(it?.name)}</b> · <span class="chip navy">${esc(st.code)}</span> ${esc(st.name)}
+          <div class="small muted">Pidió <b>${x.requested}</b> · enviado <b>${x.qty}</b> el ${fmtDate(x.sent_at)} · faltan <b style="color:var(--bad)">${falta}</b> · Stock almacén: <b style="color:${stock ? 'var(--ok)' : 'var(--bad)'}">${stock}</b></div></div>
+        <input type="number" min="1" class="inp" value="${falta}" data-balqty="${x.id}" title="Cantidad">
+        <button class="btn ok sm" data-bal-send="${x.id}">Enviar saldo</button><button class="btn ghost sm" data-bal-drop="${x.id}">Descartar</button></div>`; }).join('')}</div>` : ''}
     ${list.length ? `<div class="row" style="margin-bottom:12px"><input class="inp grow" id="shipNote" style="min-width:220px" placeholder="Nota del envío (opcional): ej. guía Shalom 12345, enviado con el camión de reparto…"><button class="btn ok" data-ship-selected>✓ Marcar seleccionados como enviados</button></div>` : ''}
     ${Object.values(byStore).map(rows => { const s = rows[0].s; return `<div class="store-block"><div class="hd">
         <label class="row" style="gap:8px"><input type="checkbox" data-selstore="${s.id}"> <span class="chip navy">${esc(s.code)}</span><h3>${esc(s.name)}</h3></label><span class="muted small">${esc(A.cityById[s.city_id].name)}</span>
         <button class="btn ok sm right" data-ship-store="${s.id}">✓ Enviar todo a esta tienda</button></div>
         ${rows.map(r => { const stock = A.iadm[r.i.id]?.stock ?? 0; return `<div class="need-row"><input type="checkbox" data-sel="${s.id}:${r.i.id}"><img class="thumb" src="${esc(photoUrl(r.i.thumb_path))}" alt="">
-          <div class="grow">${esc(r.i.name)}<div class="small muted">${esc(A.catById[r.i.category_id].name)} · Stock almacén: <b style="color:${stock ? 'var(--ok)' : 'var(--bad)'}">${stock}</b></div></div>
+          <div class="grow">${esc(r.i.name)}<div class="small muted">${esc(A.catById[r.i.category_id].name)} · Stock almacén: <b style="color:${stock ? 'var(--ok)' : 'var(--bad)'}">${stock}</b>${(r.i.max_qty || 1) > 1 && r.have ? ` · <b>pidió ${r.have.qty}</b>` : ''}</div>
+          ${A.recentShip[s.id + ':' + r.i.id] ? `<div class="small" style="color:var(--warn)">⚠ Ya se le enviaron ${A.recentShip[s.id + ':' + r.i.id].qty} el ${fmtDate(A.recentShip[s.id + ':' + r.i.id].sent_at)}: confirma que no esté aún en camino.</div>` : ''}</div>
           <span class="chip ${STATUS[r.c].cls}">${STATUS[r.c].short}</span><input type="number" min="1" class="inp" value="${r.qty}" data-qty="${s.id}:${r.i.id}" title="Cantidad">
           <button class="btn ghost sm" data-ship-one="${s.id}:${r.i.id}">Enviado</button></div>`; }).join('')}</div>`; }).join('') || '<div class="card empty">No hay nada por enviar 🎉</div>'}`
   : (A.filters.pmode === 'proveedor') ? `
@@ -1188,15 +1210,35 @@ function vPedido() {
       ${ts.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td>${esc(t.adm.material)}</td><td>${esc(t.adm.size)}</td><td class="num">${t.reponer}</td><td class="num">${t.stock}</td><td class="num"><b>${t.pedir}</b></td><td class="num">${money(t.adm.suggested_price)}</td><td class="num">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
       </tbody></table></div></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
   : `
-    <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Cant.</th><th>Nota</th><th></th></tr></thead><tbody>
-    ${open.map(x => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id]; return `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}</td><td class="num">${x.qty}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="6" class="empty">No hay envíos en camino</td></tr>'}
+    <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Enviado</th><th class="num">Pidió</th><th>Nota</th><th></th></tr></thead><tbody>
+    ${open.map(x => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id]; return `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}</td><td class="num">${x.qty}</td><td class="num">${x.requested ? `<span style="color:var(--bad)">${x.requested}</span>` : ''}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No hay envíos en camino</td></tr>'}
     </tbody></table></div>`}`;
 }
 document.addEventListener('click', async e => {
   const pm = e.target.closest('[data-pmode]'); if (pm) { A.filters.pmode = pm.dataset.pmode; return renderAdmin(); }
   let rows = null;
   const qtyOf = k => Math.max(1, parseInt($(`[data-qty="${k}"]`)?.value) || 1);
-  const toRow = k => { const [store_id, item_id] = k.split(':').map(Number); return {store_id, item_id, qty: qtyOf(k)}; };
+  let reqOf = null;
+  const toRow = k => { if (!reqOf) { reqOf = {}; pendingSends().forEach(r => reqOf[r.s.id + ':' + r.i.id] = r.qty); }
+    const [store_id, item_id] = k.split(':').map(Number); return {store_id, item_id, qty: qtyOf(k), requested: reqOf[k] || null}; };
+  const bs = e.target.closest('[data-bal-send]'), bd = e.target.closest('[data-bal-drop]');
+  if (bs || bd) {
+    const x = A.ships.find(z => z.id == (bs || bd).dataset[bs ? 'balSend' : 'balDrop']), it = A.itemById[x.item_id], st = A.storeById[x.store_id];
+    if (bd) {
+      if (!await confirmBox('Descartar saldo', `Dejarás de ver el recordatorio de <b>${x.requested - x.qty}</b> ${esc(it.name)} para ${esc(st.name)}. Si aún los necesita, la tienda los volverá a pedir en su próximo control.`, 'Descartar', true)) return;
+      try { await q(sb.rpc('close_balance', {p_id: x.id})); toast('Saldo descartado', 'ok'); await loadAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
+      return;
+    }
+    const falta = x.requested - x.qty, n = Math.max(1, parseInt($(`[data-balqty="${x.id}"]`)?.value) || 1);
+    rows = [{store_id: x.store_id, item_id: x.item_id, qty: n, requested: falta}];
+    if (!await confirmShip(rows)) return;
+    try {
+      await q(sb.rpc('mark_shipped', {p_rows: rows, p_note: `Saldo del envío del ${fmtDate(x.sent_at)}`}));
+      await q(sb.rpc('close_balance', {p_id: x.id}));
+      toast(n < falta ? `Enviado ${n}; quedan ${falta - n} pendientes` : 'Saldo enviado', 'ok'); await loadAdmin(); renderAdmin();
+    } catch (er) { toast(errMsg(er), 'bad'); }
+    return;
+  }
   if (e.target.closest('[data-ship-one]')) rows = [toRow(e.target.closest('[data-ship-one]').dataset.shipOne)];
   else if (e.target.closest('[data-ship-store]')) { const sid = e.target.closest('[data-ship-store]').dataset.shipStore; rows = $$(`[data-sel^="${sid}:"]`).map(c => toRow(c.dataset.sel)); }
   else if (e.target.closest('[data-ship-selected]')) { rows = $$('[data-sel]:checked').map(c => toRow(c.dataset.sel)); if (!rows.length) return toast('Selecciona al menos un artículo'); }
@@ -1206,8 +1248,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (!rows) return;
-  const units = rows.reduce((a, r) => a + r.qty, 0);
-  if (!await confirmBox('Marcar como enviado', `<p>Se marcarán <b>${rows.length}</b> artículo(s) (${units} unidades) como <b>En camino</b> y se descontarán del stock de almacén.</p>`, 'Marcar enviado')) return;
+  if (!await confirmShip(rows)) return;
   try {
     await q(sb.rpc('mark_shipped', {p_rows: rows, p_note: $('#shipNote')?.value || null}));
     toast(`${rows.length} envío(s) registrados`, 'ok'); await loadAdmin(); renderAdmin();
@@ -1217,6 +1258,17 @@ document.addEventListener('change', e => {
   const c = e.target.closest('[data-selstore]'); if (!c) return;
   $$(`[data-sel^="${c.dataset.selstore}:"]`).forEach(x => x.checked = c.checked);
 });
+
+/* Confirmación de envío con avisos de stock y de envío parcial */
+function confirmShip(rows) {
+  const units = rows.reduce((a, r) => a + r.qty, 0), name = r => `${esc(A.itemById[r.item_id]?.name)} → ${esc(A.storeById[r.store_id]?.code)}`;
+  const need = {}; rows.forEach(r => need[r.item_id] = (need[r.item_id] || 0) + r.qty);
+  const over = Object.entries(need).filter(([id, n]) => n > (A.iadm[id]?.stock ?? 0));
+  const partial = rows.filter(r => r.requested && r.qty < r.requested);
+  return confirmBox('Marcar como enviado', `<p>Se marcarán <b>${rows.length}</b> artículo(s) (${units} unidades) como <b>En camino</b> y se descontarán del stock de almacén.</p>
+    ${over.length ? `<div class="status-banner" style="background:var(--bad-soft);color:var(--bad)"><b>!</b><div><b>Envías más de lo que hay en stock:</b><br>${over.map(([id, n]) => `${esc(A.itemById[id]?.name)}: envías ${n}, stock ${A.iadm[id]?.stock ?? 0}`).join('<br>')}<br><span class="small">Si el stock real es distinto, actualízalo en Catálogo.</span></div></div>` : ''}
+    ${partial.length ? `<div class="status-banner pending"><b>⏳</b><div><b>Envío incompleto, quedará saldo pendiente:</b><br>${partial.map(r => `${name(r)}: pidió ${r.requested}, envías ${r.qty}, faltan ${r.requested - r.qty}`).join('<br>')}</div></div>` : ''}`, 'Marcar enviado');
+}
 
 /* ---------- Catálogo ---------- */
 function vCatalogo() {
@@ -1693,6 +1745,8 @@ function addPedido(wb) {
   [9, 10].forEach(c => ws.getColumn(c).numFmt = '"S/ "#,##0.00');
   const open = A.ships.filter(x => x.status === 'en_camino' && A.storeById[x.store_id]).map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s.city_id]?.name, s.code, s.name, A.itemById[x.item_id]?.name, x.qty, x.note || '']; });
   xlSheet(wb, 'En camino', 'Envíos en camino', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Cant.', 'Nota'], open, [16, 12, 9, 26, 32, 7, 36]);
+  const bal = A.balances.map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s?.city_id]?.name, s?.code, s?.name, A.itemById[x.item_id]?.name, x.requested, x.qty, x.requested - x.qty]; });
+  xlSheet(wb, 'Saldos pendientes', 'Envíos incompletos con saldo pendiente', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Pidió', 'Enviado', 'Falta'], bal, [16, 12, 9, 26, 32, 8, 9, 8]);
 }
 function addCatalogo(wb) {
   const rows = A.items.map(i => { const a = A.iadm[i.id] || {}, c = A.catById[i.category_id]; return [c?.grupo, c?.name, i.name, a.supplier, a.material, a.size, a.suggested_price ?? '', a.stock ?? 0, (i.max_qty || 1) > 1 ? `1 a ${i.max_qty}` : 'Por unidad', i.active && c?.active ? 'Activo' : 'Quitado']; });

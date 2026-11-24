@@ -60,6 +60,7 @@ supabase/03_importar_estado_excel.sql   Estado del Excel v2 (✔ / vacío / 1)
 supabase/04_hacer_admin.sql     Dar rol admin a un usuario
 supabase/05_campanas.sql        Campañas: tablas, permisos, validación y fotos de evidencia
 supabase/06_materiales_cantidad.sql  Pedido por cantidad + 8 materiales iniciales
+supabase/07_envios_parciales.sql     Saldos pendientes de envíos incompletos
 supabase/functions/gestionar-tienda/   Crea usuarios de tienda y cambia contraseñas (Edge Function)
 ```
 
