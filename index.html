@@ -1207,10 +1207,11 @@ function vPedido() {
           <span class="chip ${STATUS[r.c].cls}">${STATUS[r.c].short}</span><input type="number" min="1" class="inp" value="${r.qty}" data-qty="${s.id}:${r.i.id}" title="Cantidad">
           <button class="btn ghost sm" data-ship-one="${s.id}:${r.i.id}">Enviado</button></div>`; }).join('')}</div>`; }).join('') || '<div class="card empty">No hay nada por enviar 🎉</div>'}`
   : (A.filters.pmode === 'proveedor') ? `
-    <p class="small muted" style="margin-top:0">A pedir = (faltantes + deteriorados) × cantidad por tienda − stock en almacén.</p>
+    <div class="row" style="margin-bottom:10px"><p class="small muted grow" style="margin:0">A pedir = lo que piden las tiendas (faltantes + deteriorados) − stock en almacén.</p>
+      ${tot.length ? '<button class="btn amber sm" data-x="proveedor">⬇ Excel del pedido al proveedor</button>' : ''}</div>
     ${Object.entries(bySup).map(([sup, ts]) => `<div class="store-block"><div class="hd"><h3>${esc(sup)}</h3><span class="right chip amber">${ts.reduce((a, t) => a + t.pedir, 0)} unidades${ts.some(t => t.costo != null) ? ' · ' + money(ts.reduce((a, t) => a + (t.costo || 0), 0)) : ''}</span></div>
-      <div style="overflow-x:auto"><table class="t"><thead><tr><th>Artículo</th><th>Material</th><th>Medida</th><th class="num">Necesitan</th><th class="num">Stock</th><th class="num">A pedir</th><th class="num">P. sugerido</th><th class="num">Subtotal</th></tr></thead><tbody>
-      ${ts.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td>${esc(t.adm.material)}</td><td>${esc(t.adm.size)}</td><td class="num">${t.reponer}</td><td class="num">${t.stock}</td><td class="num"><b>${t.pedir}</b></td><td class="num">${money(t.adm.suggested_price)}</td><td class="num">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
+      <div style="overflow-x:auto"><table class="t"><thead><tr><th>Artículo</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">Necesitan</th><th class="num">Stock</th><th class="num">A pedir</th><th class="num">P. sugerido</th><th class="num">Subtotal</th></tr></thead><tbody>
+      ${ts.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td>${esc(t.adm.supplier || 'SIN PROVEEDOR')}</td><td>${esc(t.adm.material)}</td><td>${esc(t.adm.size)}</td><td class="num">${t.reponer}</td><td class="num">${t.stock}</td><td class="num"><b>${t.pedir}</b></td><td class="num">${money(t.adm.suggested_price)}</td><td class="num">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
       </tbody></table></div></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
   : `
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Enviado</th><th class="num">Pidió</th><th>Nota</th><th></th></tr></thead><tbody>
@@ -1766,13 +1767,20 @@ function addTotal(wb) {
   const ws = xlSheet(wb, 'Total', 'Total de faltantes y pedido', ['Grupo', 'Categoría', 'Artículo', 'No tiene', 'Deteriorado', 'A reponer', 'En camino', 'Stock almacén', 'A pedir', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Costo est.'], rows, [12, 20, 32, 10, 12, 11, 11, 13, 10, 24, 20, 18, 12, 12]);
   [13, 14].forEach(c => ws.getColumn(c).numFmt = '"S/ "#,##0.00');
 }
+function addProveedor(wb) {
+  const ts = itemTotals().filter(t => t.pedir > 0).sort((a, b) => (a.adm.supplier || '').localeCompare(b.adm.supplier || '') || a.item.sort - b.item.sort);
+  const prov = ts.map(t => [t.adm.supplier || 'SIN PROVEEDOR', t.cat.grupo, t.cat.name, t.item.name, t.adm.material || '', t.adm.size || '', t.reponer, t.stock, t.pedir, t.adm.suggested_price ?? '', t.costo ?? '']);
+  if (prov.length) prov.push(['TOTAL', '', '', '', '', '', ts.reduce((a, t) => a + t.reponer, 0), '', ts.reduce((a, t) => a + t.pedir, 0), '', ts.reduce((a, t) => a + (t.costo || 0), 0) || '']);
+  const ws = xlSheet(wb, 'Pedir al proveedor', 'Pedido a proveedores', ['Proveedor', 'Grupo', 'Categoría', 'Artículo', 'Material', 'Medida', 'Necesitan', 'Stock almacén', 'A pedir', 'Precio sug.', 'Subtotal'], prov, [26, 12, 20, 32, 20, 18, 11, 13, 10, 12, 12]);
+  [10, 11].forEach(c => ws.getColumn(c).numFmt = '"S/ "#,##0.00');
+  if (prov.length) ws.getRow(ws.rowCount).font = {bold: true};
+  ws.getColumn(9).font = {bold: true};
+  return ws;
+}
 function addPedido(wb) {
   const env = pendingSends().map(r => [A.cityById[r.s.city_id].name, r.s.code, r.s.name, A.catById[r.i.category_id].name, r.i.name, STATUS[r.c].short, r.qty, A.iadm[r.i.id]?.supplier || '', '']);
   paintStatus(xlSheet(wb, 'Enviar a tiendas', 'Lo que hay que enviar y a qué tienda', ['Ciudad', 'Código', 'Tienda', 'Categoría', 'Artículo', 'Motivo', 'Cantidad', 'Proveedor', 'Enviado (✔)'], env, [12, 9, 26, 20, 32, 13, 10, 24, 12]), 5, 6, 6);
-  const prov = itemTotals().filter(t => t.pedir > 0).sort((a, b) => (a.adm.supplier || '').localeCompare(b.adm.supplier || ''))
-    .map(t => [t.adm.supplier || '', t.cat.name, t.item.name, t.adm.material || '', t.adm.size || '', t.reponer, t.stock, t.pedir, t.adm.suggested_price ?? '', t.costo ?? '']);
-  const ws = xlSheet(wb, 'Pedir al proveedor', 'Pedido a proveedores', ['Proveedor', 'Categoría', 'Artículo', 'Material', 'Medida', 'Necesitan', 'Stock', 'A pedir', 'Precio sug.', 'Subtotal'], prov, [24, 20, 32, 20, 18, 11, 9, 10, 12, 12]);
-  [9, 10].forEach(c => ws.getColumn(c).numFmt = '"S/ "#,##0.00');
+  addProveedor(wb);
   const open = A.ships.filter(x => x.status === 'en_camino' && A.storeById[x.store_id]).map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s.city_id]?.name, s.code, s.name, A.itemById[x.item_id]?.name, x.qty, x.note || '']; });
   xlSheet(wb, 'En camino', 'Envíos en camino', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Cant.', 'Nota'], open, [16, 12, 9, 26, 32, 7, 36]);
   const bal = A.balances.map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s?.city_id]?.name, s?.code, s?.name, A.itemById[x.item_id]?.name, x.requested, x.qty, x.requested - x.qty]; });
@@ -1794,6 +1802,7 @@ async function exportView(kind) {
     if (kind === 'registros') { addRegistros(wb); return download(wb, 'Noraves_Registros'); }
     if (kind === 'catalogo') { addCatalogo(wb); return download(wb, 'Noraves_Catalogo'); }
     if (kind === 'pedido') { addPedido(wb); return download(wb, 'Noraves_Pedido_y_Envio'); }
+    if (kind === 'proveedor') { addProveedor(wb); return download(wb, 'Noraves_Pedido_Proveedor'); }
     const m = A.filters.mode;
     if (m === 'matriz') await addMatriz(wb, reportItems()); else if (m === 'tienda') addPorTienda(wb); else if (m === 'ciudad') addPorCiudad(wb); else addTotal(wb);
     download(wb, 'Noraves_Faltantes_' + m);
