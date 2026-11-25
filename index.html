@@ -131,6 +131,9 @@ label.f .req{color:var(--bad)}
 .cat-tabs button.send{border-color:var(--amber);color:var(--navy-2)}
 .cat-tabs button.send.on{background:var(--amber);border-color:var(--amber);color:var(--navy-2)}
 .steps{display:grid;gap:10px}
+.mv{display:inline-flex;gap:2px;margin-right:4px}
+.mv .btn{padding:3px 7px;font-size:13px;line-height:1}
+.mv .btn:disabled{opacity:.25}
 .bal-block{border:2px solid var(--amber)}
 .bal-block .hd{background:var(--amber-soft);flex-direction:column;align-items:flex-start;gap:2px;text-align:left}
 .grp-card{background:#fff;border:1.5px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;transition:border-color .15s}
@@ -1270,6 +1273,26 @@ function confirmShip(rows) {
     ${partial.length ? `<div class="status-banner pending"><b>⏳</b><div><b>Envío incompleto, quedará saldo pendiente:</b><br>${partial.map(r => `${name(r)}: pidió ${r.requested}, envías ${r.qty}, faltan ${r.requested - r.qty}`).join('<br>')}</div></div>` : ''}`, 'Marcar enviado');
 }
 
+/* ---------- Orden con flechas ---------- */
+function siblingsOf(kind, x) {
+  const list = kind === 'item' ? A.items.filter(i => i.category_id === x.category_id) : A.cats.filter(c => c.grupo === x.grupo);
+  return list.sort((a, b) => (a.sort || 0) - (b.sort || 0) || a.name.localeCompare(b.name));
+}
+async function moveOrder(kind, id, dir) {
+  const x = (kind === 'item' ? A.itemById : A.catById)[id], sib = siblingsOf(kind, x), k = sib.indexOf(x), j = k + dir;
+  if (j < 0 || j >= sib.length) return;
+  [sib[k], sib[j]] = [sib[j], sib[k]];
+  const base = Math.min(...sib.map(s => s.sort || 0)) || 1;   // renumera sin salirse de su rango (artes 1…, materiales 101…)
+  const changes = sib.map((s, n) => ({s, sort: base + n})).filter(c => c.s.sort !== c.sort);
+  changes.forEach(c => c.s.sort = c.sort); renderAdmin();       // se ve al instante
+  try { await Promise.all(changes.map(c => q(sb.from(kind === 'item' ? 'items' : 'categories').update({sort: c.sort}).eq('id', c.s.id)))); }
+  catch (e) { toast('No se pudo guardar el orden: ' + errMsg(e), 'bad'); await loadAdmin(); renderAdmin(); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-mv]'); if (!b || b.disabled) return;
+  const [kind, id, dir] = b.dataset.mv.split(':'); moveOrder(kind, +id, +dir);
+});
+
 /* ---------- Catálogo ---------- */
 function vCatalogo() {
   const showOff = A.filters.showOff;
@@ -1282,6 +1305,8 @@ function vCatalogo() {
   ${GRUPOS.map(g => `<div class="grp-title" style="margin-top:4px">${g}</div><div class="cat-list" style="margin-bottom:10px">${cats.filter(c => c.grupo === g).map(c => {
       const n = A.items.filter(i => i.category_id === c.id && i.active).length;
       return `<div class="cat-item ${c.active ? '' : 'off'}"><div class="grow"><b>${esc(c.name)}</b><div class="small muted">${n} artículo(s)</div></div>
+      ${(() => { const sib = siblingsOf('cat', c), k = sib.indexOf(c);
+        return `<span class="mv"><button class="btn ghost xs" data-mv="cat:${c.id}:-1" ${k <= 0 ? 'disabled' : ''} title="Subir">↑</button><button class="btn ghost xs" data-mv="cat:${c.id}:1" ${k >= sib.length - 1 ? 'disabled' : ''} title="Bajar">↓</button></span>`; })()}
       <button class="btn ghost xs" data-cat-edit="${c.id}">Editar</button>${c.active ? `<button class="btn ghost xs" data-cat-off="${c.id}">Quitar</button>` : `<button class="btn ghost xs" data-cat-on="${c.id}">Restaurar</button>`}</div>`; }).join('') || '<span class="muted small">Sin categorías</span>'}</div>`).join('')}
   <div class="toolbar" style="margin-top:26px"><h2>Artículos</h2>${filtersBar({city: false})}<button class="btn amber sm right" data-item-new>+ Nuevo artículo</button><button class="btn ghost sm" data-x="catalogo">⬇ Excel</button></div>
   <div class="tbl-wrap"><table class="t"><thead><tr><th>Foto</th><th>Artículo</th><th>Categoría</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">P. sugerido</th><th class="num">Stock</th><th>Pedido</th><th></th></tr></thead><tbody>
@@ -1289,7 +1314,9 @@ function vCatalogo() {
     return `<tr style="${i.active ? '' : 'opacity:.5'}"><td><img class="thumb" style="width:46px;height:56px;cursor:zoom-in" src="${esc(photoUrl(i.thumb_path))}" data-lb="${i.id}" alt=""></td><td><b>${esc(i.name)}</b>${inc ? ' <span class="chip amber">Completar datos</span>' : ''}${i.active ? '' : ' <span class="chip">Quitado</span>'}</td>
     <td class="small">${esc(A.catById[i.category_id]?.grupo)} · ${esc(A.catById[i.category_id]?.name)}</td><td class="small">${esc(a.supplier || '—')}</td><td class="small">${esc(a.material || '—')}</td><td class="small">${esc(a.size || '—')}</td>
     <td class="num small">${money(a.suggested_price)}</td><td class="num">${a.stock ?? 0}</td><td class="small">${(i.max_qty || 1) > 1 ? `1 a ${i.max_qty}` : 'Por unidad'}</td>
-    <td style="white-space:nowrap"><button class="btn ghost xs" data-item-edit="${i.id}">Editar</button> ${i.active ? `<button class="btn ghost xs" data-item-off="${i.id}">Quitar</button>` : `<button class="btn ghost xs" data-item-on="${i.id}">Restaurar</button>`}</td></tr>`; }).join('') || '<tr><td colspan="10" class="empty">Sin artículos</td></tr>'}
+    <td style="white-space:nowrap">${(() => { const sib = siblingsOf('item', i), k = sib.indexOf(i);
+      return `<span class="mv"><button class="btn ghost xs" data-mv="item:${i.id}:-1" ${k <= 0 ? 'disabled' : ''} title="Subir">↑</button><button class="btn ghost xs" data-mv="item:${i.id}:1" ${k >= sib.length - 1 ? 'disabled' : ''} title="Bajar">↓</button></span>`; })()}
+      <button class="btn ghost xs" data-item-edit="${i.id}">Editar</button> ${i.active ? `<button class="btn ghost xs" data-item-off="${i.id}">Quitar</button>` : `<button class="btn ghost xs" data-item-on="${i.id}">Restaurar</button>`}</td></tr>`; }).join('') || '<tr><td colspan="10" class="empty">Sin artículos</td></tr>'}
   </tbody></table></div>
   <p class="hint">"Quitar" oculta el artículo o categoría para las tiendas y los informes, pero conserva el historial. Puedes restaurarlo cuando quieras.</p>`;
 }
@@ -1297,11 +1324,12 @@ function vCatalogo() {
 function catForm(c = {}) {
   const m = modal(c.id ? 'Editar categoría' : 'Nueva categoría', `
     <div class="field"><label class="f">Nombre <span class="req">*</span></label><input class="inp" id="cfName" value="${esc(c.name || '')}" placeholder="Ej. Preciadores"></div>
-    <div class="grid2"><div class="field"><label class="f">Grupo <span class="req">*</span></label><select class="inp" id="cfGrupo">${GRUPOS.map(g => `<option ${c.grupo === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
-    <div class="field"><label class="f">Orden</label><input class="inp" id="cfSort" type="number" value="${c.sort ?? (A.cats.length + 1)}"></div></div>`,
+    <div class="field"><label class="f">Grupo <span class="req">*</span></label><select class="inp" id="cfGrupo">${GRUPOS.map(g => `<option ${c.grupo === g ? 'selected' : ''}>${g}</option>`).join('')}</select>
+      <div class="hint">${c.id ? 'Para cambiar su posición usa las flechas ↑ ↓ en Catálogo.' : 'Se agrega al final del grupo; luego puedes moverla con las flechas ↑ ↓.'}</div></div>`,
     {footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn" id="cfSave">Guardar</button>`});
   $('#cfSave', m.el).onclick = async () => {
-    const row = {name: $('#cfName', m.el).value.trim(), grupo: $('#cfGrupo', m.el).value, sort: +$('#cfSort', m.el).value || 0};
+    const row = {name: $('#cfName', m.el).value.trim(), grupo: $('#cfGrupo', m.el).value};
+    if (!c.id || c.grupo !== row.grupo) row.sort = Math.max(0, ...A.cats.map(x => x.sort || 0)) + 1;   // al final
     if (!row.name) return toast('Escribe un nombre', 'bad');
     try {
       await q(c.id ? sb.from('categories').update(row).eq('id', c.id) : sb.from('categories').insert(row));
@@ -1332,11 +1360,11 @@ function itemForm(it = {}) {
         <div class="field"><label class="f">Stock en almacén</label><input class="inp" id="ifStock" type="number" min="0" value="${a.stock ?? 0}"></div>
         <div class="field"><label class="f">Cantidad a enviar por defecto</label><input class="inp" id="ifQty" type="number" min="1" value="${a.qty_per_store ?? 1}"><div class="hint">Se usa cuando la tienda no indicó cuántos pide.</div></div>
       </div></div>
-    <div class="grid2">
+    <div class="grid2" style="grid-template-columns:1fr">
       <div class="field"><label class="f">Pedido máximo de la tienda</label><input class="inp" id="ifMax" type="number" min="1" max="50" value="${it.max_qty ?? 1}">
         <div class="hint">1 = por unidad. Si es mayor, cuando la tienda marque "No lo tenemos" o "Deteriorado" elegirá cuántos necesita (de 1 hasta este número).</div></div>
-      <div class="field"><label class="f">Orden</label><input class="inp" id="ifSort" type="number" value="${it.sort ?? (A.items.length + 1)}" style="max-width:120px"></div>
-    </div>`,
+    </div>
+    <p class="hint">${it.id ? 'Para cambiar su posición usa las flechas ↑ ↓ en la lista de Catálogo.' : 'Se agrega al final de su categoría; luego puedes moverlo con las flechas ↑ ↓.'}</p>`,
     {wide: true, footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="ifSave">Guardar artículo</button>`});
   let photo = null;
   $('#ifFile', m.el).onchange = async e => {
@@ -1347,7 +1375,9 @@ function itemForm(it = {}) {
   };
   $('#ifSave', m.el).onclick = async () => {
     const v = id => $(id, m.el).value.trim();
-    const base = {name: v('#ifName'), category_id: +v('#ifCat'), sort: +v('#ifSort') || 0, max_qty: Math.min(50, Math.max(1, +v('#ifMax') || 1))};
+    const base = {name: v('#ifName'), category_id: +v('#ifCat'), max_qty: Math.min(50, Math.max(1, +v('#ifMax') || 1))};
+    if (!it.id || it.category_id !== base.category_id)   // nuevo o cambiado de categoría → al final
+      base.sort = Math.max(0, ...A.items.filter(x => x.category_id === base.category_id).map(x => x.sort || 0)) + 1;
     const adm = {supplier: v('#ifSup'), material: v('#ifMat'), size: v('#ifSize'),
       suggested_price: v('#ifPrice') === '' ? null : +v('#ifPrice'), stock: Math.max(0, +v('#ifStock') || 0), qty_per_store: Math.max(1, +v('#ifQty') || 1)};
     if (!base.name || !base.category_id) return toast('Nombre y categoría son obligatorios', 'bad');
