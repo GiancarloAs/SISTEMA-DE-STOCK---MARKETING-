@@ -212,6 +212,11 @@ table.mx thead th.st{position:sticky;left:0;z-index:4;background:#f7f8fc}
 .c-deteriorado{color:var(--warn);background:var(--warn-soft)}
 .c-en_camino{color:var(--ship);background:var(--ship-soft)}
 .c-sin_dato{color:var(--none)}
+.rc-list{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));padding-bottom:90px}
+.rc-card{display:flex;gap:12px;align-items:flex-start;background:#fff;border:2px solid var(--line);border-radius:16px;padding:12px}
+.rc-card img{width:64px;height:84px;object-fit:contain;border-radius:8px;background:#f3f4f9;cursor:zoom-in;flex:none}
+.rc-card .ans{margin-top:8px}
+.rc-card.r-llego{border-color:var(--ok)}.rc-card.r-no_llego{border-color:var(--bad)}.rc-card.r-llego_danado{border-color:var(--warn)}
 .cm-cat{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff}
 .cm-cat>summary{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none}
 .cm-cat>summary::-webkit-details-marker{display:none}
@@ -522,6 +527,7 @@ async function route() {
    PANEL DE TIENDA
    ===================================================================== */
 const ST = {store: null, cats: [], items: [], ships: {}, subs: [], answers: {}, notes: '', period: currentPeriod()};
+const periodStart = p => new Date(`${p.slice(0, 7)}-01T00:00:00-05:00`);   // inicio del mes en hora de Lima
 const draftKey = () => `nv_draft_${ST.store.id}_${ST.period}`;
 
 async function initStore() {
@@ -530,13 +536,17 @@ async function initStore() {
     q(sb.from('stores').select('*, cities(name)').eq('id', sid).single()),
     q(sb.from('categories').select('*').eq('active', true).order('sort')),
     q(sb.from('items').select('*').eq('active', true).order('sort').order('name')),
-    q(sb.from('shipments').select('*').eq('status', 'en_camino')),
+    q(sb.from('shipments').select('*').or(`status.eq.en_camino,and(receipt.eq.llego,receipt_at.gte.${periodStart(currentPeriod()).toISOString()})`).order('sent_at')),
     q(sb.from('submissions').select('*').order('submitted_at', {ascending: false}).limit(6)),
   ]);
   const mine = new Set((await q(sb.from('item_stores').select('item_id'))).map(r => r.item_id));   // solo trae las de esta tienda
-  const catIds = new Set(cats.map(c => c.id));
-  Object.assign(ST, {store: st, cats, items: items.filter(i => catIds.has(i.category_id) && (i.all_stores !== false || mine.has(i.id))), subs});
-  ST.ships = {}; ships.forEach(s => ST.ships[s.item_id] = s);
+  const catIds = new Set(cats.map(c => c.id)), itemById = Object.fromEntries(items.map(i => [i.id, i]));
+  // Envíos: primero la tienda confirma lo que le llegó; lo que llegó este mes ya no se le pide en el control
+  ST.recv = ships.filter(s => s.status === 'en_camino' && itemById[s.item_id]).map(s => ({...s, item: itemById[s.item_id]}));
+  ST.got = new Set(ships.filter(s => s.receipt === 'llego').map(s => s.item_id));
+  ST.rcAns = Object.fromEntries(ST.recv.filter(s => s.receipt).map(s => [s.id, s.receipt]));
+  Object.assign(ST, {store: st, cats, items: items.filter(i => catIds.has(i.category_id) && (i.all_stores !== false || mine.has(i.id)) && !ST.got.has(i.id)), subs});
+  ST.ships = {}; ST.recv.forEach(s => ST.ships[s.item_id] = s);
   ST.prev = null;
   if (subs[0]) {
     const rows = await q(sb.from('submission_items').select('item_id,status,qty,qty_bad').eq('submission_id', subs[0].id));
@@ -549,7 +559,7 @@ async function initStore() {
   // solo respuestas de artículos que siguen activos
   Object.keys(ST.answers).forEach(k => { const it = ST.items.find(i => i.id == k);
     if (!it || (typeof ST.answers[k] === 'object' && it.max_qty <= 1)) delete ST.answers[k]; });
-  ST.step = 'home';
+  ST.step = ST.recv.some(s => !s.receipt) ? 'recepcion' : 'home';
   await loadStoreCampaigns();
   $('#stName').textContent = st.name;
   $('#stMeta').textContent = `${st.code} · ${st.cities?.name || ''}`;
@@ -580,6 +590,8 @@ function goStep(step) {
   if (typeof step === 'number') { const c = ST.cats.find(x => x.id === step); if (c) ST.openGroup = c.grupo; } ST.step = step; renderStore(); window.scrollTo({top: 0}); $('.cat-tabs .on')?.scrollIntoView({inline: 'center', block: 'nearest'}); }
 
 function renderStore() {
+  if (ST.recv.some(s => !s.receipt)) ST.step = 'recepcion';   // primero confirma lo que se le envió
+  if (ST.step === 'recepcion') return renderRecepcion();
   if (typeof ST.step === 'string' && ST.step.startsWith('camp:')) return renderCampaign(+ST.step.slice(5));
   const steps = storeSteps();
   const total = ST.items.length, done = ST.items.filter(answered).length;
@@ -591,7 +603,7 @@ function renderStore() {
   ST.step = 'home';
 
   const last = ST.subs.find(s => s.period === ST.period);
-  const enCamino = ST.items.filter(i => ST.ships[i.id]).length;
+  const enCamino = ST.recv.length;
   const next = steps.find(s => s.done < s.items.length);
   let html = `
   <div class="store-hero"><div><h2>Control de ${esc(periodLabel(ST.period).toLowerCase())}</h2>
@@ -599,7 +611,8 @@ function renderStore() {
   ${last && last.source !== 'importado'
     ? `<div class="status-banner ok"><b style="font-size:20px">✓</b><div>Ya enviaste el control de este mes el <b>${fmtDate(last.submitted_at)}</b> a las <b>${fmtTime(last.submitted_at)}</b>.<br><span class="small">Si algo cambió, puedes volver a enviarlo; Marketing verá la versión más reciente.</span></div></div>`
     : `<div class="status-banner pending"><b style="font-size:20px">!</b><div>Aún no envías el control de <b>${esc(periodLabel(ST.period).toLowerCase())}</b>.${last ? '<br><span class="small">Marketing cargó tu último estado desde el Excel. Revísalo y envía tu control actualizado.</span>' : ''}</div></div>`}
-  ${enCamino ? `<div class="status-banner" style="background:var(--ship-soft);color:#1d4aa5"><b style="font-size:18px">➜</b><div>Marketing te envió <b>${enCamino}</b> pieza(s) que están <b>en camino</b>. Cuando lleguen, márcalas como "Lo tenemos".</div></div>` : ''}
+  ${enCamino ? `<div class="status-banner" style="background:var(--ship-soft);color:#1d4aa5"><b style="font-size:18px">➜</b><div class="grow">Tienes <b>${enCamino}</b> pieza(s) enviadas que aún no llegan.<br><span class="small">Cuando lleguen, confírmalas aquí.</span></div><button class="btn sm" data-step="recepcion">¿Ya llegaron?</button></div>` : ''}
+  ${ST.got.size ? `<div class="small muted" style="margin:-4px 0 12px">✓ Este mes recibiste ${ST.got.size} pieza(s) enviadas por Marketing; esas ya no aparecen en tu control.</div>` : ''}
   ${campaignCards()}
   ${progress}
   ${ST.prev && !done ? `<div class="row" style="margin:4px 0 14px"><button class="btn ghost sm" id="stPrev">↺ Cargar mis respuestas anteriores (${fmtDate(ST.prev.at)})</button><span class="small muted">Luego corrige solo lo que cambió.</span></div>` : ''}
@@ -629,6 +642,35 @@ function renderStore() {
   ${total ? `<div class="send-bar"><div class="in"><div class="small grow">${done === total ? '<b style="color:var(--ok)">Todo revisado ✓</b>' : `<b>${total - done}</b> por revisar`}</div>
     <button class="btn amber" data-step="${next ? next.cat.id : 'resumen'}">${next ? (done ? 'Continuar →' : 'Empezar →') : 'Revisar y enviar →'}</button></div></div>` : ''}`;
   $('#storeMain').innerHTML = html;
+}
+
+/* Paso 0: confirmar lo que Marketing envió */
+function renderRecepcion() {
+  const list = ST.recv, pend = list.filter(s => !s.receipt), left = list.filter(s => !ST.rcAns[s.id]).length;
+  $('#storeMain').innerHTML = `
+  <div class="store-hero"><div><h2>${pend.length ? 'Primero: ¿te llegó lo que te enviamos?' : 'Piezas enviadas que aún no llegan'}</h2>
+    <div class="muted small">${pend.length ? `Marketing te envió estas piezas. Confirma si llegaron; luego podrás hacer el control del mes.<br>Lo que confirmes como <b>Llegó</b> ya no te lo volveremos a preguntar este mes.` : 'Si ya llegaron, márcalas y confirma.'}</div></div></div>
+  <div class="rc-list">${list.map(s => { const a = ST.rcAns[s.id];
+    return `<div class="rc-card ${a ? 'r-' + a : ''}">
+      <img src="${esc(photoUrl(s.item.thumb_path || s.item.photo_path))}" alt="" data-zoom="${s.item.id}">
+      <div class="grow"><b>${esc(s.item.name)}</b>
+        <div class="small muted">Te enviamos <b>${s.qty}</b> · ${fmtDate(s.sent_at)}${s.note ? ` · ${esc(s.note)}` : ''}</div>
+        ${s.receipt === 'no_llego' ? `<div class="small" style="color:var(--bad)">El ${fmtDate(s.receipt_at)} dijiste que aún no llegaba</div>` : ''}
+        <div class="ans">${['llego', 'no_llego', 'llego_danado'].map(k => `<button type="button" data-rc="${s.id}" data-v="${k}" class="${a === k ? 'on' : ''}"><span class="dot">${CSTATUS[k].icon}</span>${CSTATUS[k].label}</button>`).join('')}</div>
+      </div></div>`; }).join('')}</div>
+  <div class="send-bar"><div class="in">
+    ${pend.length ? '' : '<button class="btn ghost sm" data-step="home">← Volver</button>'}
+    <div class="small grow">${left ? `Faltan <b>${left}</b> por confirmar` : '<b style="color:var(--ok)">Todo respondido ✓</b>'}</div>
+    <button class="btn amber" id="rcSend" ${left ? 'disabled' : ''}>Confirmar ${pend.length ? 'y seguir →' : ''}</button></div></div>`;
+}
+async function sendRecepcion() {
+  const changed = Object.fromEntries(ST.recv.filter(s => ST.rcAns[s.id] && ST.rcAns[s.id] !== s.receipt).map(s => [s.id, ST.rcAns[s.id]]));
+  const b = $('#rcSend'); b.disabled = true;
+  try {
+    if (Object.keys(changed).length) await q(sb.rpc('confirm_receipt', {p_answers: changed}));
+    toast('Recepción confirmada ✓', 'ok');
+    await initStore(); ST.step = 'home'; renderStore(); window.scrollTo({top: 0});
+  } catch (e) { toast(errMsg(e), 'bad'); b.disabled = false; }
 }
 
 function renderStoreCategory(steps, idx, progress) {
@@ -715,6 +757,9 @@ function saveDraft() { store.set(draftKey(), {answers: ST.answers, notes: ST.not
 
 document.addEventListener('click', e => {
   if (!ST.store || $('#storeView').classList.contains('hidden')) return;
+  const rc = e.target.closest('[data-rc]');
+  if (rc) { ST.rcAns[rc.dataset.rc] = rc.dataset.v; const y = window.scrollY; renderRecepcion(); window.scrollTo({top: y}); return; }
+  if (e.target.closest('#rcSend')) return sendRecepcion();
   const b = e.target.closest('.ans button');
   if (b) {
     const id = b.dataset.item, left = () => ST.items.filter(i => i.category_id == ST.step && !answered(i)).length;
@@ -955,16 +1000,21 @@ async function loadAdmin() {
     .forEach(r => { if (!lastAny[r.store_id]) lastAny[r.store_id] = r.submitted_at; });
   const after = (sh, at) => !at || new Date(sh.sent_at) >= new Date(at);   // mismo instante = importado junto con el control
   const openShip = {}, recentShip = {};
-  ships.filter(s => s.status === 'en_camino' && after(s, latest[s.store_id]?.submitted_at)).forEach(s => {
+  ships.filter(s => s.status === 'en_camino' && (s.receipt === 'no_llego' || after(s, latest[s.store_id]?.submitted_at))).forEach(s => {
     const k = s.store_id + ':' + s.item_id; openShip[k] = (openShip[k] || 0) + s.qty;
   });
   ships.filter(s => s.status !== 'anulado' && Date.now() - new Date(s.sent_at) < 30 * 864e5).forEach(s => {
     const k = s.store_id + ':' + s.item_id; if (!recentShip[k] || s.sent_at > recentShip[k].sent_at) recentShip[k] = s;
   });
+  // Lo que la tienda confirmó como recibido en el mes elegido
+  const pFrom = periodStart(A.period), pTo = new Date(pFrom); pTo.setMonth(pTo.getMonth() + 1);
+  const gotShip = {}, badShip = {};
+  ships.filter(s => s.receipt && s.receipt !== 'no_llego' && new Date(s.receipt_at) >= pFrom && new Date(s.receipt_at) < pTo).forEach(s => {
+    const m = s.receipt === 'llego' ? gotShip : badShip, k = s.store_id + ':' + s.item_id; if (!m[k] || s.receipt_at > m[k]) m[k] = s.receipt_at; });
   // Saldos pendientes: se envió menos de lo pedido y la tienda aún no hizo un nuevo control
   const balances = ships.filter(s => s.requested > s.qty && s.status !== 'anulado' && after(s, lastAny[s.store_id]));
   Object.assign(A, {
-    cities, stores, cats, items, subs, ships, subItems, subQty, latest, openShip, recentShip, balances, lastAny,
+    cities, stores, cats, items, subs, ships, subItems, subQty, latest, openShip, recentShip, balances, lastAny, gotShip, badShip,
     iadm: Object.fromEntries(iadm.map(r => [r.item_id, r])),
     itemStores: itemStores.reduce((m, r) => ((m[r.item_id] ||= new Set()).add(r.store_id), m), {}),
     cityById: Object.fromEntries(cities.map(c => [c.id, c])),
@@ -985,7 +1035,10 @@ function cellState(storeId, itemId) {
   const sub = A.latest[storeId];
   const st = sub ? A.subItems[sub.id]?.[itemId] : null;
   if (st === 'tiene') return 'tiene';
-  if (A.openShip[storeId + ':' + itemId]) return 'en_camino';
+  const k = storeId + ':' + itemId, after = t => t && (!sub || new Date(t) >= new Date(sub.submitted_at));
+  if (after(A.gotShip[k])) return 'tiene';            // la tienda confirmó que le llegó
+  if (A.openShip[k]) return 'en_camino';
+  if (after(A.badShip[k])) return 'deteriorado';     // llegó dañado
   return st || 'sin_dato';
 }
 const needs = s => s === 'no_tiene' || s === 'deteriorado';
@@ -1240,9 +1293,9 @@ function vPedido() {
       ${ts.map(t => `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${esc(photoUrl(t.item.thumb_path))}" alt="">${esc(t.item.name)}</div></td><td>${esc(t.adm.supplier || 'SIN PROVEEDOR')}</td><td>${esc(t.adm.material)}</td><td>${esc(t.adm.size)}</td><td class="num">${t.reponer}</td><td class="num">${t.stock}</td><td class="num"><b>${t.pedir}</b></td><td class="num">${money(t.adm.suggested_price)}</td><td class="num">${t.costo != null ? money(t.costo) : ''}</td></tr>`).join('')}
       </tbody></table></div></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
   : `
-    <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Enviado</th><th class="num">Pidió</th><th>Nota</th><th></th></tr></thead><tbody>
+    <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Enviado</th><th class="num">Pidió</th><th>Tienda dice</th><th>Nota</th><th></th></tr></thead><tbody>
     ${open.map((x, n) => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id], first = !n || open[n - 1].store_id !== x.store_id;
-      return (first ? `<tr class="city"><td colspan="7">${esc(s.code)} · ${esc(s.name)} <span class="small muted" style="font-weight:500">· ${esc(A.cityById[s.city_id]?.name)} · ${open.filter(y => y.store_id === x.store_id).length} pieza(s)</span></td></tr>` : '') + `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}<div class="small muted">${esc(A.catById[i?.category_id]?.name || '')}</div></td><td class="num">${x.qty}</td><td class="num">${x.requested ? `<span style="color:var(--bad)">${x.requested}</span>` : ''}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No hay envíos en camino</td></tr>'}
+      return (first ? `<tr class="city"><td colspan="8">${esc(s.code)} · ${esc(s.name)} <span class="small muted" style="font-weight:500">· ${esc(A.cityById[s.city_id]?.name)} · ${open.filter(y => y.store_id === x.store_id).length} pieza(s)</span></td></tr>` : '') + `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}<div class="small muted">${esc(A.catById[i?.category_id]?.name || '')}</div></td><td class="num">${x.qty}</td><td class="num">${x.requested ? `<span style="color:var(--bad)">${x.requested}</span>` : ''}</td><td class="small">${x.receipt === 'no_llego' ? `<span class="chip bad">✕ Aún no llegó</span><div class="muted">${fmtDate(x.receipt_at)}</div>` : '<span class="muted">Sin confirmar</span>'}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="empty">No hay envíos en camino</td></tr>'}
     </tbody></table></div>`}`;
 }
 document.addEventListener('click', async e => {
