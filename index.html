@@ -212,6 +212,13 @@ table.mx thead th.st{position:sticky;left:0;z-index:4;background:#f7f8fc}
 .c-deteriorado{color:var(--warn);background:var(--warn-soft)}
 .c-en_camino{color:var(--ship);background:var(--ship-soft)}
 .c-sin_dato{color:var(--none)}
+.cm-cat{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff}
+.cm-cat>summary{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none}
+.cm-cat>summary::-webkit-details-marker{display:none}
+.cm-cat>summary::before{content:'›';font-weight:700;color:var(--navy);transition:transform .15s}
+.cm-cat[open]>summary::before{transform:rotate(90deg)}
+.cm-cat>.pick-grid{padding:0 12px 12px}
+.cm-grp .grp-title{margin:10px 0 6px}
 .c-no_aplica{color:#8a8fa8;background:repeating-linear-gradient(135deg,#f1f2f7 0 6px,#e8e9f0 6px 12px)}
 .legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
 .store-block{background:#fff;border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:hidden}
@@ -1566,7 +1573,17 @@ function campForm(c = null) {
     <div class="grid2"><div class="field"><label class="f">Inicio <span class="req">*</span></label><input class="inp" type="date" id="cmStart" value="${c?.start_date || t}"></div>
       <div class="field"><label class="f">Fin <span class="req">*</span></label><input class="inp" type="date" id="cmEnd" value="${c?.end_date || ''}"></div></div>
     <div class="field"><label class="f">Piezas de la campaña <span class="req">*</span> <span class="muted" id="cmItemsN"></span></label>
-      <div class="pick-grid">${items.map(i => `<label class="pick"><input type="checkbox" data-cm-item="${i.id}" ${sel.has(i.id) ? 'checked' : ''}><img src="${esc(photoUrl(i.thumb_path))}" alt=""><span>${esc(i.name)}<small>${esc(A.catById[i.category_id].name)}</small></span></label>`).join('')}</div>
+      <input class="inp" id="cmSearch" type="search" placeholder="Buscar pieza por nombre…" style="margin-bottom:8px">
+      <div id="cmPick">${GRUPOS.map(g => { const cs = A.cats.filter(ca => ca.grupo === g && ca.active).sort((a, b) => a.sort - b.sort)
+          .map(ca => ({ca, its: items.filter(i => i.category_id === ca.id)})).filter(x => x.its.length);
+        if (!cs.length) return '';
+        return `<div class="cm-grp"><div class="grp-title">${GRUPO[g].icon} ${GRUPO[g].label}</div>${cs.map(({ca, its}) => `
+          <details class="cm-cat" data-cm-cat="${ca.id}" ${its.some(i => sel.has(i.id)) ? 'open' : ''}>
+            <summary><b>${esc(ca.name)}</b><span class="chip" data-cm-catn></span><span class="grow"></span>
+              <button type="button" class="btn ghost xs" data-cm-catall="1">Todas</button><button type="button" class="btn ghost xs" data-cm-catall="0">Ninguna</button></summary>
+            <div class="pick-grid">${its.map(i => `<label class="pick" data-name="${esc(i.name.toLowerCase())}"><input type="checkbox" data-cm-item="${i.id}" ${sel.has(i.id) ? 'checked' : ''}><img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy"><span>${esc(i.name)}</span></label>`).join('')}</div>
+          </details>`).join('')}</div>`; }).join('')}</div>
+      <div class="small muted" id="cmNoRes" style="display:none;padding:8px">Ninguna pieza coincide con la búsqueda.</div>
       <div class="hint">¿La pieza aún no existe? Créala primero en Catálogo › + Nuevo artículo.</div></div>
     <div class="field"><div class="row" style="margin-bottom:6px;gap:8px"><label class="f" style="margin:0">Tiendas participantes <span class="req">*</span> <span class="muted" id="cmStoresN"></span></label>
       <span class="right row" style="gap:6px"><button type="button" class="btn ghost xs" data-cm-all="1">Todas</button><button type="button" class="btn ghost xs" data-cm-all="0">Ninguna</button></span></div>
@@ -1575,14 +1592,24 @@ function campForm(c = null) {
         <div class="sp-grid">${ss.map(s => `<label class="sp-item"><input type="checkbox" data-cm-store="${s.id}" data-city="${ci.id}" ${selS.has(s.id) ? 'checked' : ''}><b>${esc(s.code)}</b><span>${esc(s.name.replace(/^Tienda /, ''))}</span></label>`).join('')}</div></div>`; }).join('')}
     </div>`,
     {wide: true, footer: `${c ? `<button class="btn ghost danger-t" id="cmDel" style="margin-right:auto;color:var(--bad)">Eliminar</button>${c.active ? '<button class="btn ghost" id="cmEndNow">Finalizar ya</button>' : '<button class="btn ghost" id="cmReopen">Reactivar</button>'}` : ''}<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="cmSave">Guardar campaña</button>`});
-  const count = () => { $('#cmItemsN', m.el).textContent = `(${$$('[data-cm-item]:checked', m.el).length} elegidas)`; $('#cmStoresN', m.el).textContent = `(${$$('[data-cm-store]:checked', m.el).length} elegidas)`;
+  const count = () => { $('#cmItemsN', m.el).textContent = `(${$$('[data-cm-item]:checked', m.el).length} elegidas)`;
+    $$('[data-cm-cat]', m.el).forEach(d => { const n = $$('[data-cm-item]:checked', d).length, t = $$('[data-cm-item]', d).length, ch = $('[data-cm-catn]', d);
+      ch.textContent = `${n} de ${t}`; ch.className = 'chip' + (n ? ' ok' : ''); }); $('#cmStoresN', m.el).textContent = `(${$$('[data-cm-store]:checked', m.el).length} elegidas)`;
     $$('[data-cm-city]', m.el).forEach(cb => { const all = $$(`[data-cm-store][data-city="${cb.dataset.cmCity}"]`, m.el); cb.checked = all.every(x => x.checked); }); };
   count();
+  $('#cmSearch', m.el).oninput = e => { const t = e.target.value.trim().toLowerCase(); let any = false;
+    $$('[data-cm-cat]', m.el).forEach(d => { let vis = 0;
+      $$('.pick', d).forEach(l => { const ok = !t || l.dataset.name.includes(t); l.style.display = ok ? '' : 'none'; vis += ok; });
+      d.style.display = vis ? '' : 'none'; if (t && vis) d.open = true; any ||= vis > 0; });
+    $$('.cm-grp', m.el).forEach(g => g.style.display = $$('[data-cm-cat]', g).some(d => d.style.display !== 'none') ? '' : 'none');
+    $('#cmNoRes', m.el).style.display = any ? 'none' : ''; };
   m.el.addEventListener('change', e => {
     if (e.target.dataset.cmCity) $$(`[data-cm-store][data-city="${e.target.dataset.cmCity}"]`, m.el).forEach(x => x.checked = e.target.checked);
     count();
   });
   m.el.addEventListener('click', async e => {
+    const ca = e.target.closest('[data-cm-catall]'); if (ca) { e.preventDefault(); const d = ca.closest('[data-cm-cat]'); d.open = true;
+      $$('.pick', d).filter(l => l.style.display !== 'none').forEach(l => $('[data-cm-item]', l).checked = ca.dataset.cmCatall === '1'); count(); }
     const all = e.target.closest('[data-cm-all]'); if (all) { $$('[data-cm-store]', m.el).forEach(x => x.checked = all.dataset.cmAll === '1'); count(); }
     if (e.target.closest('#cmEndNow') || e.target.closest('#cmReopen')) {
       try { await q(sb.from('campaigns').update({active: !!e.target.closest('#cmReopen')}).eq('id', c.id)); m.close(); toast('Listo', 'ok'); await loadCampaignsAdmin(); renderAdmin(); } catch (er) { toast(errMsg(er), 'bad'); }
