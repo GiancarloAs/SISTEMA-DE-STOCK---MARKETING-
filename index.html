@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Noraves · Control de Artes y Materiales</title>
+<title>Noraves · Control de Publicidad, Comunicados y Materiales</title>
 <meta name="theme-color" content="#0d11b5">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d11b5'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='900' font-size='34' fill='%23ffd300' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -315,7 +315,7 @@ html,body{overflow-x:clip}
 <section id="login" class="hidden">
   <form class="login-card" id="loginForm" autocomplete="on">
     <div class="brand"><img src="assets/logo-azul-slogan.png" alt="Noraves · Aquí sabemos de pollo."></div>
-    <h1>Control de artes y materiales</h1>
+    <h1>Control de publicidad, comunicados y materiales</h1>
     <div id="loginErr" class="err hidden"></div>
     <div class="field">
       <label class="f" for="lgUser">Código de tienda o correo</label>
@@ -401,7 +401,8 @@ const STATUS = {
   sin_dato:    {label:'Sin dato',      short:'Sin dato',    icon:'·', cls:''},
   no_aplica:   {label:'No aplica',     short:'No aplica',   icon:'', cls:''},
 };
-const GRUPOS = ['ARTES', 'MATERIALES'];
+const GRUPOS = ['PUBLICIDAD', 'COMUNICADOS', 'MATERIALES'];
+const GRUPO = {PUBLICIDAD: {label: 'Publicidad', icon: '🖼️', abbr: 'P'}, COMUNICADOS: {label: 'Comunicados', icon: '📢', abbr: 'C'}, MATERIALES: {label: 'Materiales', icon: '🧰', abbr: 'M'}};
 
 function show(id) {
   ['login', 'storeView', 'adminView', 'boot'].forEach(x => $('#' + x).classList.toggle('hidden', x !== id));
@@ -602,8 +603,8 @@ function renderStore() {
     const thumbs = gs.flatMap(x => x.items).slice(0, 3);
     return `<div class="grp-card ${open ? 'open' : ''}">
       <button class="grp-head" data-group="${g}">
-        <span class="step-n ${st}">${st === 'ok' ? '✓' : g === 'ARTES' ? '🎨' : '🧰'}</span>
-        <span class="grow" style="text-align:left"><b style="font-size:16px">${g === 'ARTES' ? 'Artes' : 'Materiales'}</b><br>
+        <span class="step-n ${st}">${st === 'ok' ? '✓' : GRUPO[g].icon}</span>
+        <span class="grow" style="text-align:left"><b style="font-size:16px">${GRUPO[g].label}</b><br>
           <span class="small muted">${gs.length} categoría(s) · ${gs.map(x => esc(x.cat.name)).join(', ')}</span></span>
         <span class="thumbs">${thumbs.map(i => `<img src="${esc(photoUrl(i.thumb_path))}" alt="" loading="lazy">`).join('')}</span>
         <span class="chip ${st}">${dn}/${tot}</span><span class="grp-arrow">›</span></button>
@@ -1302,7 +1303,7 @@ async function moveOrder(kind, id, dir) {
   const x = (kind === 'item' ? A.itemById : A.catById)[id], sib = siblingsOf(kind, x), k = sib.indexOf(x), j = k + dir;
   if (j < 0 || j >= sib.length) return;
   [sib[k], sib[j]] = [sib[j], sib[k]];
-  const base = Math.min(...sib.map(s => s.sort || 0)) || 1;   // renumera sin salirse de su rango (artes 1…, materiales 101…)
+  const base = Math.min(...sib.map(s => s.sort || 0)) || 1;   // renumera sin salirse de su rango (publicidad/comunicados 1…, materiales 101…)
   const changes = sib.map((s, n) => ({s, sort: base + n})).filter(c => c.s.sort !== c.sort);
   changes.forEach(c => c.s.sort = c.sort); renderAdmin();       // se ve al instante
   try { await Promise.all(changes.map(c => q(sb.from(kind === 'item' ? 'items' : 'categories').update({sort: c.sort}).eq('id', c.s.id)))); }
@@ -1777,7 +1778,7 @@ async function addMatriz(wb, items, name = 'Matriz', withImgs = true) {
       ...st.map((c, k) => !A.filters.onlyNeed || needs(c) ? XSYM[c] + (needs(c) && items[k].max_qty > 1 && cellQty(s.id, items[k].id) ? cellQty(s.id, items[k].id).qty : '') : ''), items.reduce((a, it, k) => a + needQty(s.id, it.id, st[k]), 0)];
   });
   rows.push(['', '', 'STOCK ALMACÉN', '', ...items.map(i => A.iadm[i.id]?.stock ?? 0), '']);
-  const ws = xlSheet(wb, name, 'Matriz de control de artes y materiales', head, rows, [12, 9, 26, 16, ...items.map(() => 7), 10]);
+  const ws = xlSheet(wb, name, 'Matriz de control de publicidad, comunicados y materiales', head, rows, [12, 9, 26, 16, ...items.map(() => 7), 10]);
   ws.getRow(4).height = 150;
   for (let k = 5; k <= 4 + items.length; k++) ws.getCell(4, k).alignment = {textRotation: 90, vertical: 'bottom', horizontal: 'center', wrapText: true};
   paintStatus(ws, 5, 5, 4 + items.length);
@@ -1836,7 +1837,7 @@ function addPedido(wb) {
 }
 function addCatalogo(wb) {
   const rows = A.items.map(i => { const a = A.iadm[i.id] || {}, c = A.catById[i.category_id]; return [c?.grupo, c?.name, i.name, a.supplier, a.material, a.size, a.suggested_price ?? '', a.stock ?? 0, (i.max_qty || 1) > 1 ? `1 a ${i.max_qty}` : 'Por unidad', i.active && c?.active ? 'Activo' : 'Quitado']; });
-  xlSheet(wb, 'Catálogo', 'Catálogo de artes y materiales', ['Grupo', 'Categoría', 'Artículo', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Stock', 'Pedido', 'Estado'], rows, [12, 20, 32, 24, 20, 18, 12, 8, 11, 10]).getColumn(7).numFmt = '"S/ "#,##0.00';
+  xlSheet(wb, 'Catálogo', 'Catálogo de publicidad, comunicados y materiales', ['Grupo', 'Categoría', 'Artículo', 'Proveedor', 'Material', 'Medida', 'Precio sug.', 'Stock', 'Pedido', 'Estado'], rows, [12, 20, 32, 24, 20, 18, 12, 8, 11, 10]).getColumn(7).numFmt = '"S/ "#,##0.00';
 }
 async function download(wb, name) {
   const buf = await wb.xlsx.writeBuffer();
@@ -1865,7 +1866,7 @@ async function exportTodo() {
     addPorTienda(wb); addPorCiudad(wb); addTotal(wb); addPedido(wb);
     for (const c of A.cats.filter(c => c.active)) {      // una hoja por categoría
       const its = reportItems().filter(i => i.category_id === c.id);
-      if (its.length) await addMatriz(wb, its, `${c.grupo === 'ARTES' ? 'A' : 'M'} · ${c.name}`, false);
+      if (its.length) await addMatriz(wb, its, `${GRUPO[c.grupo]?.abbr || ''} · ${c.name}`, false);
     }
     addCatalogo(wb);
     await download(wb, 'Noraves_Control_Tiendas_COMPLETO');
