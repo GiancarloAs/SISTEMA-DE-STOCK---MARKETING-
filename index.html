@@ -1169,6 +1169,14 @@ document.addEventListener('click', e => {
 });
 
 /* ---------- Pedido y envío ---------- */
+/* Envíos filtrados por ciudad y categoría, ordenados por ciudad › tienda › categoría › artículo */
+function shipFilter(list) {
+  const f = A.filters, okCat = it => it && (!f.cat || (f.cat.startsWith('G:') ? A.catById[it.category_id]?.grupo === f.cat.slice(2) : it.category_id == f.cat));
+  const key = x => { const s = A.storeById[x.store_id], it = A.itemById[x.item_id], c = A.catById[it.category_id];
+    return [A.cityById[s.city_id]?.sort || 0, s.code, c?.sort || 0, it.sort || 0]; };
+  return list.filter(x => A.storeById[x.store_id] && okCat(A.itemById[x.item_id]) && (!f.city || A.storeById[x.store_id].city_id == f.city))
+    .sort((a, b) => { const ka = key(a), kb = key(b); for (let k = 0; k < 4; k++) if (ka[k] !== kb[k]) return ka[k] < kb[k] ? -1 : 1; return new Date(b.sent_at) - new Date(a.sent_at); });
+}
 function pendingSends() {
   const items = reportItems(), out = [];
   for (const s of reportStores()) for (const i of items) {
@@ -1182,9 +1190,8 @@ function vPedido() {
   const byStore = {}; list.forEach(r => (byStore[r.s.id] ||= []).push(r));
   const tot = itemTotals().filter(t => t.pedir > 0);
   const bySup = {}; tot.forEach(t => (bySup[t.adm.supplier || 'SIN PROVEEDOR'] ||= []).push(t));
-  const inCity = x => A.storeById[x.store_id] && (!A.filters.city || A.storeById[x.store_id].city_id == A.filters.city);
-  const open = A.ships.filter(x => x.status === 'en_camino' && inCity(x));
-  const bal = A.balances.filter(inCity);
+  const open = shipFilter(A.ships.filter(x => x.status === 'en_camino'));
+  const bal = shipFilter(A.balances);
   return `
   <div class="toolbar"><h2>Pedido y envío</h2>${filtersBar()}<button class="btn sm right" data-x="pedido">⬇ Excel</button></div>
   <div class="seg" style="margin-bottom:14px">${[['enviar', `1 · Enviar a tiendas (${list.length}${bal.length ? ` + ${bal.length} saldo${bal.length > 1 ? 's' : ''}` : ''})`], ['proveedor', `2 · Pedir al proveedor (${tot.length})`], ['camino', `3 · En camino (${open.length})`]].map(([k, l]) => `<button data-pmode="${k}" class="${(A.filters.pmode || 'enviar') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -1215,7 +1222,8 @@ function vPedido() {
       </tbody></table></div></div>`).join('') || '<div class="card empty">Con el stock actual no necesitas pedir nada al proveedor 🎉</div>'}`
   : `
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Enviado</th><th>Tienda</th><th>Artículo</th><th class="num">Enviado</th><th class="num">Pidió</th><th>Nota</th><th></th></tr></thead><tbody>
-    ${open.map(x => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id]; return `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}</td><td class="num">${x.qty}</td><td class="num">${x.requested ? `<span style="color:var(--bad)">${x.requested}</span>` : ''}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No hay envíos en camino</td></tr>'}
+    ${open.map((x, n) => { const s = A.storeById[x.store_id], i = A.itemById[x.item_id], first = !n || open[n - 1].store_id !== x.store_id;
+      return (first ? `<tr class="city"><td colspan="7">${esc(s.code)} · ${esc(s.name)} <span class="small muted" style="font-weight:500">· ${esc(A.cityById[s.city_id]?.name)} · ${open.filter(y => y.store_id === x.store_id).length} pieza(s)</span></td></tr>` : '') + `<tr><td>${fmtDT(x.sent_at)}</td><td><span class="chip navy">${esc(s.code)}</span> ${esc(s.name)}</td><td>${esc(i?.name)}<div class="small muted">${esc(A.catById[i?.category_id]?.name || '')}</div></td><td class="num">${x.qty}</td><td class="num">${x.requested ? `<span style="color:var(--bad)">${x.requested}</span>` : ''}</td><td class="small">${esc(x.note || '')}</td><td><button class="btn ghost xs" data-cancel-ship="${x.id}">Anular</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No hay envíos en camino</td></tr>'}
     </tbody></table></div>`}`;
 }
 document.addEventListener('click', async e => {
@@ -1781,9 +1789,9 @@ function addPedido(wb) {
   const env = pendingSends().map(r => [A.cityById[r.s.city_id].name, r.s.code, r.s.name, A.catById[r.i.category_id].name, r.i.name, STATUS[r.c].short, r.qty, A.iadm[r.i.id]?.supplier || '', '']);
   paintStatus(xlSheet(wb, 'Enviar a tiendas', 'Lo que hay que enviar y a qué tienda', ['Ciudad', 'Código', 'Tienda', 'Categoría', 'Artículo', 'Motivo', 'Cantidad', 'Proveedor', 'Enviado (✔)'], env, [12, 9, 26, 20, 32, 13, 10, 24, 12]), 5, 6, 6);
   addProveedor(wb);
-  const open = A.ships.filter(x => x.status === 'en_camino' && A.storeById[x.store_id]).map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s.city_id]?.name, s.code, s.name, A.itemById[x.item_id]?.name, x.qty, x.note || '']; });
+  const open = shipFilter(A.ships.filter(x => x.status === 'en_camino')).map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s.city_id]?.name, s.code, s.name, `${A.itemById[x.item_id]?.name} (${A.catById[A.itemById[x.item_id]?.category_id]?.name || ''})`, x.qty, x.note || '']; });
   xlSheet(wb, 'En camino', 'Envíos en camino', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Cant.', 'Nota'], open, [16, 12, 9, 26, 32, 7, 36]);
-  const bal = A.balances.map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s?.city_id]?.name, s?.code, s?.name, A.itemById[x.item_id]?.name, x.requested, x.qty, x.requested - x.qty]; });
+  const bal = shipFilter(A.balances).map(x => { const s = A.storeById[x.store_id]; return [fmtDT(x.sent_at), A.cityById[s?.city_id]?.name, s?.code, s?.name, A.itemById[x.item_id]?.name, x.requested, x.qty, x.requested - x.qty]; });
   xlSheet(wb, 'Saldos pendientes', 'Envíos incompletos con saldo pendiente', ['Enviado', 'Ciudad', 'Código', 'Tienda', 'Artículo', 'Pidió', 'Enviado', 'Falta'], bal, [16, 12, 9, 26, 32, 8, 9, 8]);
 }
 function addCatalogo(wb) {
