@@ -212,6 +212,7 @@ table.mx thead th.st{position:sticky;left:0;z-index:4;background:#f7f8fc}
 .c-deteriorado{color:var(--warn);background:var(--warn-soft)}
 .c-en_camino{color:var(--ship);background:var(--ship-soft)}
 .c-sin_dato{color:var(--none)}
+.c-no_aplica{color:#8a8fa8;background:repeating-linear-gradient(135deg,#f1f2f7 0 6px,#e8e9f0 6px 12px)}
 .legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
 .store-block{background:#fff;border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:hidden}
 .store-block .hd{display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -398,6 +399,7 @@ const STATUS = {
   deteriorado: {label:'Deteriorado',   short:'Deteriorado', icon:'!', cls:'warn'},
   en_camino:   {label:'En camino',     short:'En camino',   icon:'➜', cls:'ship'},
   sin_dato:    {label:'Sin dato',      short:'Sin dato',    icon:'·', cls:''},
+  no_aplica:   {label:'No aplica',     short:'No aplica',   icon:'', cls:''},
 };
 const GRUPOS = ['ARTES', 'MATERIALES'];
 
@@ -523,8 +525,9 @@ async function initStore() {
     q(sb.from('shipments').select('*').eq('status', 'en_camino')),
     q(sb.from('submissions').select('*').order('submitted_at', {ascending: false}).limit(6)),
   ]);
+  const mine = new Set((await q(sb.from('item_stores').select('item_id'))).map(r => r.item_id));   // solo trae las de esta tienda
   const catIds = new Set(cats.map(c => c.id));
-  Object.assign(ST, {store: st, cats, items: items.filter(i => catIds.has(i.category_id)), subs});
+  Object.assign(ST, {store: st, cats, items: items.filter(i => catIds.has(i.category_id) && (i.all_stores !== false || mine.has(i.id))), subs});
   ST.ships = {}; ships.forEach(s => ST.ships[s.item_id] = s);
   ST.prev = null;
   if (subs[0]) {
@@ -920,12 +923,13 @@ $('#adTabs').addEventListener('click', e => {
 $('#adExportAll').addEventListener('click', () => exportTodo());
 
 async function loadAdmin() {
-  const [cities, stores, cats, items, iadm, subs, ships] = await Promise.all([
+  const [cities, stores, cats, items, iadm, itemStores, subs, ships] = await Promise.all([
     q(sb.from('cities').select('*').order('sort').order('name')),
     q(sb.from('stores').select('*').order('code')),
     q(sb.from('categories').select('*').order('sort').order('name')),
     q(sb.from('items').select('*').order('sort').order('name')),
     q(sb.from('item_admin').select('*')),
+    fetchAll(() => sb.from('item_stores').select('*')),
     fetchAll(() => sb.from('submissions').select('*').eq('period', A.period).order('submitted_at', {ascending: false})),
     fetchAll(() => sb.from('shipments').select('*').order('sent_at', {ascending: false})),
   ]);
@@ -954,6 +958,7 @@ async function loadAdmin() {
   Object.assign(A, {
     cities, stores, cats, items, subs, ships, subItems, subQty, latest, openShip, recentShip, balances, lastAny,
     iadm: Object.fromEntries(iadm.map(r => [r.item_id, r])),
+    itemStores: itemStores.reduce((m, r) => ((m[r.item_id] ||= new Set()).add(r.store_id), m), {}),
     cityById: Object.fromEntries(cities.map(c => [c.id, c])),
     catById: Object.fromEntries(cats.map(c => [c.id, c])),
     storeById: Object.fromEntries(stores.map(s => [s.id, s])),
@@ -962,7 +967,13 @@ async function loadAdmin() {
 }
 
 /* Estado de un artículo en una tienda para el mes elegido */
+/* ¿Esta tienda valida este artículo? */
+function applies(storeId, itemId) {
+  const it = A.itemById[itemId];
+  return !it || it.all_stores !== false || !!A.itemStores[itemId]?.has(storeId);
+}
 function cellState(storeId, itemId) {
+  if (!applies(storeId, itemId)) return 'no_aplica';
   const sub = A.latest[storeId];
   const st = sub ? A.subItems[sub.id]?.[itemId] : null;
   if (st === 'tiene') return 'tiene';
@@ -996,7 +1007,7 @@ function reportStores() {
 }
 function itemTotals(items = reportItems(), stores = reportStores()) {
   return items.map(it => {
-    const t = {item: it, cat: A.catById[it.category_id], adm: A.iadm[it.id] || {}, no_tiene: 0, deteriorado: 0, en_camino: 0, tiene: 0, sin_dato: 0};
+    const t = {item: it, cat: A.catById[it.category_id], adm: A.iadm[it.id] || {}, no_tiene: 0, deteriorado: 0, en_camino: 0, tiene: 0, sin_dato: 0, no_aplica: 0};
     t.reponer = 0;
     stores.forEach(s => { const c = cellState(s.id, it.id); t[c]++; t.reponer += needQty(s.id, it.id, c); });
     t.stock = t.adm.stock || 0;
@@ -1110,7 +1121,7 @@ function vFaltantes() {
     <div class="seg">${[['matriz', 'Matriz'], ['tienda', 'Por tienda'], ['ciudad', 'Por ciudad'], ['total', 'Total']].map(([k, l]) => `<button data-mode="${k}" class="${m === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${filtersBar({onlyNeed: true})}
     <button class="btn sm right" data-x="faltantes">⬇ Excel (esta vista)</button></div>
-  <div class="legend" style="margin-bottom:12px">${['tiene', 'no_tiene', 'deteriorado', 'en_camino', 'sin_dato'].map(s => `<span class="chip ${STATUS[s].cls}">${STATUS[s].icon} ${STATUS[s].short}</span>`).join('')}</div>`;
+  <div class="legend" style="margin-bottom:12px">${['tiene', 'no_tiene', 'deteriorado', 'en_camino', 'sin_dato'].map(s => `<span class="chip ${STATUS[s].cls}">${STATUS[s].icon} ${STATUS[s].short}</span>`).join('')}<span class="chip c-no_aplica">– No aplica</span></div>`;
   if (!items.length) return head + '<div class="card empty">No hay artículos para este filtro.</div>';
 
   if (m === 'matriz') {
@@ -1121,7 +1132,7 @@ function vFaltantes() {
       if (A.filters.onlyNeed && !items.some(i => needs(cellState(s.id, i.id)))) continue;
       if (s.city_id !== lastCity) { lastCity = s.city_id; rowsHtml += `<tr class="city"><td class="st" colspan="1">${esc(A.cityById[s.city_id].name)}</td><td colspan="${items.length + 1}"></td></tr>`; }
       rowsHtml += `<tr><td class="st"><b>${esc(s.code)}</b> ${esc(s.name)}<div class="small muted">${A.latest[s.id] ? fmtDT(A.latest[s.id].submitted_at) : 'sin envío este mes'}</div></td>${items.map(i => {
-        const c = cellState(s.id, i.id); return `<td class="c ${show(c) ? 'c-' + c : ''}" title="${esc(i.name)} · ${STATUS[c].short}">${show(c) ? cellText(s.id, i.id, c) : ''}</td>`; }).join('')}
+        const c = cellState(s.id, i.id); if (c === 'no_aplica') return `<td class="c c-no_aplica" title="${esc(i.name)} · No aplica a esta tienda">–</td>`; return `<td class="c ${show(c) ? 'c-' + c : ''}" title="${esc(i.name)} · ${STATUS[c].short}">${show(c) ? cellText(s.id, i.id, c) : ''}</td>`; }).join('')}
         <td class="num"><b>${items.filter(i => needs(cellState(s.id, i.id))).length}</b></td></tr>`;
     }
     return head + `<div class="tbl-wrap" style="max-height:75vh"><table class="t mx"><thead>
@@ -1318,14 +1329,15 @@ function vCatalogo() {
         return `<span class="mv"><button class="btn ghost xs" data-mv="cat:${c.id}:-1" ${k <= 0 ? 'disabled' : ''} title="Subir">↑</button><button class="btn ghost xs" data-mv="cat:${c.id}:1" ${k >= sib.length - 1 ? 'disabled' : ''} title="Bajar">↓</button></span>`; })()}
       <button class="btn ghost xs" data-cat-edit="${c.id}">Editar</button>${c.active ? `<button class="btn ghost xs" data-cat-off="${c.id}">Quitar</button>` : `<button class="btn ghost xs" data-cat-on="${c.id}">Restaurar</button>`}</div>`; }).join('') || '<span class="muted small">Sin categorías</span>'}</div>`).join('')}
   <div class="toolbar" style="margin-top:26px"><h2>Artículos</h2>${filtersBar({city: false})}<button class="btn amber sm right" data-item-new>+ Nuevo artículo</button><button class="btn ghost sm" data-x="catalogo">⬇ Excel</button></div>
-  <div class="tbl-wrap"><table class="t"><thead><tr><th>Foto</th><th>Artículo</th><th>Categoría</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">P. sugerido</th><th class="num">Stock</th><th>Pedido</th><th></th></tr></thead><tbody>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Foto</th><th>Artículo</th><th>Categoría</th><th>Proveedor</th><th>Material</th><th>Medida</th><th class="num">P. sugerido</th><th class="num">Stock</th><th>Pedido</th><th>Tiendas</th><th></th></tr></thead><tbody>
   ${items.map(i => { const a = A.iadm[i.id] || {}; const inc = a.supplier === 'POR DEFINIR' || a.material === 'POR DEFINIR';
     return `<tr style="${i.active ? '' : 'opacity:.5'}"><td><img class="thumb" style="width:46px;height:56px;cursor:zoom-in" src="${esc(photoUrl(i.thumb_path))}" data-lb="${i.id}" alt=""></td><td><b>${esc(i.name)}</b>${inc ? ' <span class="chip amber">Completar datos</span>' : ''}${i.active ? '' : ' <span class="chip">Quitado</span>'}</td>
     <td class="small">${esc(A.catById[i.category_id]?.grupo)} · ${esc(A.catById[i.category_id]?.name)}</td><td class="small">${esc(a.supplier || '—')}</td><td class="small">${esc(a.material || '—')}</td><td class="small">${esc(a.size || '—')}</td>
     <td class="num small">${money(a.suggested_price)}</td><td class="num">${a.stock ?? 0}</td><td class="small">${(i.max_qty || 1) > 1 ? `1 a ${i.max_qty}` : 'Por unidad'}</td>
+    <td class="small">${i.all_stores === false ? `<span class="chip amber">${A.itemStores[i.id]?.size || 0} de ${A.stores.filter(x => x.active).length}</span>` : 'Todas'}</td>
     <td style="white-space:nowrap">${(() => { const sib = siblingsOf('item', i), k = sib.indexOf(i);
       return `<span class="mv"><button class="btn ghost xs" data-mv="item:${i.id}:-1" ${k <= 0 ? 'disabled' : ''} title="Subir">↑</button><button class="btn ghost xs" data-mv="item:${i.id}:1" ${k >= sib.length - 1 ? 'disabled' : ''} title="Bajar">↓</button></span>`; })()}
-      <button class="btn ghost xs" data-item-edit="${i.id}">Editar</button> ${i.active ? `<button class="btn ghost xs" data-item-off="${i.id}">Quitar</button>` : `<button class="btn ghost xs" data-item-on="${i.id}">Restaurar</button>`}</td></tr>`; }).join('') || '<tr><td colspan="10" class="empty">Sin artículos</td></tr>'}
+      <button class="btn ghost xs" data-item-edit="${i.id}">Editar</button> ${i.active ? `<button class="btn ghost xs" data-item-off="${i.id}">Quitar</button>` : `<button class="btn ghost xs" data-item-on="${i.id}">Restaurar</button>`}</td></tr>`; }).join('') || '<tr><td colspan="11" class="empty">Sin artículos</td></tr>'}
   </tbody></table></div>
   <p class="hint">"Quitar" oculta el artículo o categoría para las tiendas y los informes, pero conserva el historial. Puedes restaurarlo cuando quieras.</p>`;
 }
@@ -1369,12 +1381,35 @@ function itemForm(it = {}) {
         <div class="field"><label class="f">Stock en almacén</label><input class="inp" id="ifStock" type="number" min="0" value="${a.stock ?? 0}"></div>
         <div class="field"><label class="f">Cantidad a enviar por defecto</label><input class="inp" id="ifQty" type="number" min="1" value="${a.qty_per_store ?? 1}"><div class="hint">Se usa cuando la tienda no indicó cuántos pide.</div></div>
       </div></div>
+    <div class="field"><label class="f">¿Qué tiendas lo validan?</label>
+      <div class="seg" style="margin-bottom:8px"><button type="button" data-ifall="1" class="${it.all_stores !== false ? 'on' : ''}">Todas las tiendas</button><button type="button" data-ifall="0" class="${it.all_stores === false ? 'on' : ''}">Solo algunas</button></div>
+      <div id="ifStores" class="${it.all_stores === false ? '' : 'hidden'}">
+        <div class="row" style="margin-bottom:6px;gap:8px"><span class="small muted grow" id="ifStoresN"></span><button type="button" class="btn ghost xs" data-ifs-all="1">Todas</button><button type="button" class="btn ghost xs" data-ifs-all="0">Ninguna</button></div>
+        ${A.cities.map(ci => { const ss = A.stores.filter(x => x.city_id === ci.id && x.active); if (!ss.length) return '';
+          const sel = A.itemStores[it.id] || new Set();
+          return `<div class="store-pick"><label class="sp-city"><input type="checkbox" data-ifs-city="${ci.id}"> ${esc(ci.name)}</label>
+          <div class="sp-grid">${ss.map(x => `<label class="sp-item"><input type="checkbox" data-ifs-store="${x.id}" data-city="${ci.id}" ${it.all_stores === false ? (sel.has(x.id) ? 'checked' : '') : 'checked'}><b>${esc(x.code)}</b><span>${esc(x.name.replace(/^Tienda /, ''))}</span></label>`).join('')}</div></div>`; }).join('')}
+        <div class="hint">Las tiendas no marcadas no verán este artículo al validar, y en los informes saldrá "No aplica".</div>
+      </div></div>
     <div class="grid2" style="grid-template-columns:1fr">
       <div class="field"><label class="f">Pedido máximo de la tienda</label><input class="inp" id="ifMax" type="number" min="1" max="50" value="${it.max_qty ?? 1}">
         <div class="hint">1 = por unidad. Si es mayor, cuando la tienda marque "No lo tenemos" o "Deteriorado" elegirá cuántos necesita (de 1 hasta este número).</div></div>
     </div>
     <p class="hint">${it.id ? 'Para cambiar su posición usa las flechas ↑ ↓ en la lista de Catálogo.' : 'Se agrega al final de su categoría; luego puedes moverlo con las flechas ↑ ↓.'}</p>`,
     {wide: true, footer: `<button class="btn ghost" data-close>Cancelar</button><button class="btn amber" id="ifSave">Guardar artículo</button>`});
+  let allStores = it.all_stores !== false;
+  const ifCount = () => { const n = $$('[data-ifs-store]:checked', m.el).length, t = $$('[data-ifs-store]', m.el).length;
+    $('#ifStoresN', m.el).textContent = `${n} de ${t} tiendas`;
+    $$('[data-ifs-city]', m.el).forEach(cb => cb.checked = $$(`[data-ifs-store][data-city="${cb.dataset.ifsCity}"]`, m.el).every(x => x.checked)); };
+  ifCount();
+  m.el.addEventListener('click', e => {
+    const b = e.target.closest('[data-ifall]'); if (b) { allStores = b.dataset.ifall === '1'; $$('[data-ifall]', m.el).forEach(x => x.classList.toggle('on', x === b)); $('#ifStores', m.el).classList.toggle('hidden', allStores); }
+    const a = e.target.closest('[data-ifs-all]'); if (a) { $$('[data-ifs-store]', m.el).forEach(x => x.checked = a.dataset.ifsAll === '1'); ifCount(); }
+  });
+  m.el.addEventListener('change', e => {
+    if (e.target.dataset.ifsCity) $$(`[data-ifs-store][data-city="${e.target.dataset.ifsCity}"]`, m.el).forEach(x => x.checked = e.target.checked);
+    if (e.target.dataset.ifsCity || e.target.dataset.ifsStore) ifCount();
+  });
   let photo = null;
   $('#ifFile', m.el).onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
@@ -1391,6 +1426,9 @@ function itemForm(it = {}) {
       suggested_price: v('#ifPrice') === '' ? null : +v('#ifPrice'), stock: Math.max(0, +v('#ifStock') || 0), qty_per_store: Math.max(1, +v('#ifQty') || 1)};
     if (!base.name || !base.category_id) return toast('Nombre y categoría son obligatorios', 'bad');
     if (!adm.supplier || !adm.material || !adm.size) return toast('Proveedor, material y medida son obligatorios', 'bad');
+    const storeIds = $$('[data-ifs-store]:checked', m.el).map(x => +x.dataset.ifsStore);
+    if (!allStores && !storeIds.length) return toast('Elige al menos una tienda, o marca "Todas las tiendas"', 'bad');
+    base.all_stores = allStores;
     if (!it.id && !photo) return toast('Agrega la foto del artículo', 'bad');
     const btn = $('#ifSave', m.el); btn.disabled = true; btn.textContent = 'Guardando…';
     try {
@@ -1406,6 +1444,8 @@ function itemForm(it = {}) {
       if (id) await q(sb.from('items').update(base).eq('id', id));
       else id = (await q(sb.from('items').insert(base).select('id').single())).id;
       await q(sb.from('item_admin').upsert({item_id: id, ...adm}));
+      await q(sb.from('item_stores').delete().eq('item_id', id));
+      if (!allStores) await q(sb.from('item_stores').insert(storeIds.map(store_id => ({item_id: id, store_id}))));
       m.close(); toast('Artículo guardado', 'ok'); await loadAdmin(); renderAdmin();
     } catch (e) { toast(errMsg(e), 'bad'); btn.disabled = false; btn.textContent = 'Guardar artículo'; }
   };
@@ -1691,9 +1731,9 @@ async function XL() {
   await new Promise((res, rej) => { const s = document.createElement('script'); s.src = CONFIG.EXCELJS; s.onload = res; s.onerror = rej; document.head.append(s); });
   return window.ExcelJS;
 }
-const XFILL = {tiene: 'FFE3F6EC', no_tiene: 'FFFDEAEA', deteriorado: 'FFFFF1D9', en_camino: 'FFE6EEFD', sin_dato: 'FFF3F4F9'};
-const XFONT = {tiene: 'FF17914F', no_tiene: 'FFD63B3B', deteriorado: 'FFD98200', en_camino: 'FF2F68D8', sin_dato: 'FF9AA0B8'};
-const XSYM = {tiene: '✔', no_tiene: '✘', deteriorado: '⚠', en_camino: '➜', sin_dato: '—'};
+const XFILL = {tiene: 'FFE3F6EC', no_tiene: 'FFFDEAEA', deteriorado: 'FFFFF1D9', en_camino: 'FFE6EEFD', sin_dato: 'FFF3F4F9', no_aplica: 'FFE4E5EC'};
+const XFONT = {tiene: 'FF17914F', no_tiene: 'FFD63B3B', deteriorado: 'FFD98200', en_camino: 'FF2F68D8', sin_dato: 'FF9AA0B8', no_aplica: 'FF8A8FA8'};
+const XSYM = {tiene: '✔', no_tiene: '✘', deteriorado: '⚠', en_camino: '➜', sin_dato: '—', no_aplica: 'N/A'};
 function xlSheet(wb, name, title, headers, rows, widths = []) {
   const ws = wb.addWorksheet(name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31), {views: [{state: 'frozen', ySplit: 4}]});
   ws.mergeCells(1, 1, 1, Math.max(headers.length, 4));
